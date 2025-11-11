@@ -4,6 +4,17 @@
 
 This document provides a detailed, phased implementation plan for building GeoLens from the ground up. Each phase includes specific tasks, dependencies, and acceptance criteria.
 
+## 💻 Platform Requirements
+
+**Primary Target**: Windows 10/11 x64 (Intel/AMD)
+- This is the **required** platform - all features must work on x64
+- All development and testing should prioritize x64
+
+**Bonus Target**: Windows ARM64 (Snapdragon X Elite/Plus)
+- ARM64 support is **appreciated but not required**
+- PyTorch ARM64 support on Windows is experimental
+- If implementing ARM64, ensure x64 remains fully functional
+
 ---
 
 ## Phase 1: Foundation (Week 1)
@@ -147,6 +158,56 @@ public async Task PredictAsync_ServiceDown_ThrowsException() { }
 ✅ All unit tests passing
 
 **Estimated Time**: 5-7 days
+
+### Phase 1 Verification Commands
+
+**Test Python Backend**:
+```bash
+# Verify GeoCLIP model loads
+python -m Core.smoke_test --device auto
+
+# Start FastAPI service
+uvicorn Core.api_service:app --reload --port 8899
+
+# Health check (in another terminal)
+curl http://localhost:8899/health
+# Expected: {"status": "healthy"}
+```
+
+**Test C# Services**:
+```csharp
+// C# Interactive or test harness
+using GeoLens.Services;
+
+// 1. Test hardware detection
+var hwService = new HardwareDetectionService();
+var hardware = hwService.DetectHardware();
+Console.WriteLine($"Detected: {hardware}");
+// Expected: CPU, CUDA, or ROCM
+
+// 2. Test Python runtime manager
+var manager = new PythonRuntimeManager(hardware);
+var started = await manager.StartServiceAsync();
+Console.WriteLine($"Service started: {started}");
+// Expected: true (within 30 seconds)
+
+// 3. Test API client
+var client = new GeoCLIPApiClient("http://localhost:8899");
+var health = await client.CheckHealthAsync();
+Console.WriteLine($"Healthy: {health}");
+// Expected: true
+
+// 4. Test prediction
+var result = await client.PredictAsync(new[] { "test_image.jpg" }, topK: 5);
+Console.WriteLine($"Predictions: {result.Results[0].Predictions.Count}");
+// Expected: 5 predictions with valid lat/lon
+```
+
+**Pass Criteria**:
+- All tests above pass without exceptions
+- Service starts in <30 seconds
+- Predictions return within 10 seconds (CPU) or 3 seconds (GPU)
+- No memory leaks (check Task Manager after 10 runs)
 
 ---
 

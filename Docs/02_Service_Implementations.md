@@ -431,11 +431,212 @@ Store and retrieve prediction results using image hash for instant recall.
 
 ### Implementation
 
-See previous response for full implementation with:
-- SQLite database storage
-- XXHash64 hashing
-- In-memory cache layer
-- Statistics and cleanup methods
+```csharp
+// Services/PredictionCacheService.cs
+using System.Data.SQLite;
+using System.IO.Hashing;
+
+public class PredictionCacheService : IDisposable
+{
+    private readonly SQLiteConnection _connection;
+    private readonly Dictionary<string, CachedPrediction> _memoryCache;
+    private readonly string _dbPath;
+
+    public PredictionCacheService(string? dbPath = null)
+    {
+        _dbPath = dbPath ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "GeoLens",
+            "cache.db"
+        );
+
+        Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
+
+        _connection = new SQLiteConnection($"Data Source={_dbPath};Version=3;");
+        _connection.Open();
+        _memoryCache = new Dictionary<string, CachedPrediction>();
+
+        InitializeDatabase();
+    }
+
+    private void InitializeDatabase()
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = @"
+            CREATE TABLE IF NOT EXISTS predictions (
+                image_hash TEXT PRIMARY KEY,
+                image_path TEXT NOT NULL,
+                predictions_json TEXT NOT NULL,
+                device TEXT NOT NULL,
+                cached_at TEXT NOT NULL,
+                hit_count INTEGER DEFAULT 0
+            );
+            CREATE INDEX IF NOT EXISTS idx_cached_at ON predictions(cached_at);
+        ";
+        command.ExecuteNonQuery();
+    }
+
+    public async Task<string> ComputeHashAsync(string imagePath)
+    {
+        using var stream = File.OpenRead(imagePath);
+        var hashBytes = await XxHash64.HashAsync(stream);
+        return Convert.ToHexString(hashBytes);
+    }
+
+    public async Task<CachedPrediction?> GetCachedPredictionAsync(string imagePath)
+    {
+        var hash = await ComputeHashAsync(imagePath);
+
+        // Check memory cache first
+        if (_memoryCache.TryGetValue(hash, out var cached))
+        {
+            await IncrementHitCountAsync(hash);
+            return cached;
+        }
+
+        // Check database
+        using var command = _connection.CreateCommand();
+        command.CommandText = @"
+            SELECT predictions_json, device, cached_at
+            FROM predictions
+            WHERE image_hash = @hash
+        ";
+        command.Parameters.AddWithValue("@hash", hash);
+
+        using var reader = await command.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            var predictionsJson = reader.GetString(0);
+            var device = reader.GetString(1);
+            var cachedAt = DateTime.Parse(reader.GetString(2));
+
+            var predictions = JsonSerializer.Deserialize<List<EnhancedLocationPrediction>>(predictionsJson);
+
+            var result = new CachedPrediction
+            {
+                ImagePath = imagePath,
+                Predictions = predictions ?? new(),
+                Device = device,
+                CachedAt = cachedAt
+            };
+
+            // Add to memory cache
+            _memoryCache[hash] = result;
+
+            await IncrementHitCountAsync(hash);
+            return result;
+        }
+
+        return null;
+    }
+
+    public async Task SavePredictionAsync(
+        string imagePath,
+        List<EnhancedLocationPrediction> predictions,
+        string device)
+    {
+        var hash = await ComputeHashAsync(imagePath);
+        var predictionsJson = JsonSerializer.Serialize(predictions);
+
+        using var command = _connection.CreateCommand();
+        command.CommandText = @"
+            INSERT OR REPLACE INTO predictions
+            (image_hash, image_path, predictions_json, device, cached_at, hit_count)
+            VALUES (@hash, @path, @json, @device, @cached_at, 0)
+        ";
+        command.Parameters.AddWithValue("@hash", hash);
+        command.Parameters.AddWithValue("@path", imagePath);
+        command.Parameters.AddWithValue("@json", predictionsJson);
+        command.Parameters.AddWithValue("@device", device);
+        command.Parameters.AddWithValue("@cached_at", DateTime.UtcNow.ToString("o"));
+
+        await command.ExecuteNonQueryAsync();
+
+        // Add to memory cache
+        _memoryCache[hash] = new CachedPrediction
+        {
+            ImagePath = imagePath,
+            Predictions = predictions,
+            Device = device,
+            CachedAt = DateTime.UtcNow
+        };
+    }
+
+    private async Task IncrementHitCountAsync(string hash)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = @"
+            UPDATE predictions
+            SET hit_count = hit_count + 1
+            WHERE image_hash = @hash
+        ";
+        command.Parameters.AddWithValue("@hash", hash);
+        await command.ExecuteNonQueryAsync();
+    }
+
+    public async Task<CacheStatistics> GetStatisticsAsync()
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = @"
+            SELECT
+                COUNT(*) as total_entries,
+                SUM(hit_count) as total_hits,
+                AVG(hit_count) as avg_hits
+            FROM predictions
+        ";
+
+        using var reader = await command.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            return new CacheStatistics
+            {
+                TotalEntries = reader.GetInt32(0),
+                TotalHits = reader.IsDBNull(1) ? 0 : reader.GetInt64(1),
+                AverageHits = reader.IsDBNull(2) ? 0 : reader.GetDouble(2)
+            };
+        }
+
+        return new CacheStatistics();
+    }
+
+    public async Task CleanupOldEntriesAsync(int daysOld = 90)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = @"
+            DELETE FROM predictions
+            WHERE datetime(cached_at) < datetime('now', '-' || @days || ' days')
+        ";
+        command.Parameters.AddWithValue("@days", daysOld);
+
+        var deleted = await command.ExecuteNonQueryAsync();
+        Debug.WriteLine($"Deleted {deleted} old cache entries");
+
+        // Clear memory cache
+        _memoryCache.Clear();
+    }
+
+    public void Dispose()
+    {
+        _connection?.Dispose();
+    }
+}
+
+public record CachedPrediction
+{
+    public string ImagePath { get; init; } = "";
+    public List<EnhancedLocationPrediction> Predictions { get; init; } = new();
+    public string Device { get; init; } = "";
+    public DateTime CachedAt { get; init; }
+}
+
+public record CacheStatistics
+{
+    public int TotalEntries { get; init; }
+    public long TotalHits { get; init; }
+    public double AverageHits { get; init; }
+    public double HitRate => TotalEntries > 0 ? (double)TotalHits / TotalEntries : 0;
+}
+```
 
 **File**: `Services/PredictionCacheService.cs`
 
@@ -448,10 +649,116 @@ Extract GPS coordinates from image EXIF metadata.
 
 ### Implementation
 
-See previous response for full implementation with:
-- EXIF property reading
-- GPS coordinate parsing
-- Hemisphere handling (N/S/E/W)
+```csharp
+// Services/ExifGpsExtractor.cs
+using Windows.Storage;
+using Windows.Storage.FileProperties;
+using Windows.Graphics.Imaging;
+
+public class ExifGpsExtractor
+{
+    public async Task<ExifGpsData?> ExtractGpsDataAsync(string imagePath)
+    {
+        try
+        {
+            var file = await StorageFile.GetFileFromPathAsync(imagePath);
+            using var stream = await file.OpenAsync(FileAccessMode.Read);
+
+            var decoder = await BitmapDecoder.CreateAsync(stream);
+            var properties = await decoder.BitmapProperties.GetPropertiesAsync(new[]
+            {
+                "/app1/ifd/gps/{ushort=1}",  // GPSLatitudeRef (N/S)
+                "/app1/ifd/gps/{ushort=2}",  // GPSLatitude
+                "/app1/ifd/gps/{ushort=3}",  // GPSLongitudeRef (E/W)
+                "/app1/ifd/gps/{ushort=4}",  // GPSLongitude
+                "/app1/ifd/gps/{ushort=5}",  // GPSAltitudeRef
+                "/app1/ifd/gps/{ushort=6}",  // GPSAltitude
+            });
+
+            if (!properties.Any())
+                return null;
+
+            var latRef = GetPropertyValue<string>(properties, "/app1/ifd/gps/{ushort=1}");
+            var latData = GetPropertyValue<object>(properties, "/app1/ifd/gps/{ushort=2}");
+            var lonRef = GetPropertyValue<string>(properties, "/app1/ifd/gps/{ushort=3}");
+            var lonData = GetPropertyValue<object>(properties, "/app1/ifd/gps/{ushort=4}");
+
+            if (latData == null || lonData == null)
+                return null;
+
+            var latitude = ParseGpsCoordinate(latData, latRef);
+            var longitude = ParseGpsCoordinate(lonData, lonRef);
+
+            if (latitude == 0 && longitude == 0)
+                return null; // Invalid GPS data
+
+            return new ExifGpsData
+            {
+                Latitude = latitude,
+                Longitude = longitude,
+                HasGps = true
+            };
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to extract EXIF GPS: {ex.Message}");
+            return null;
+        }
+    }
+
+    private double ParseGpsCoordinate(object data, string? reference)
+    {
+        // GPS coordinates are stored as rational arrays: [degrees, minutes, seconds]
+        if (data is not IList<object> parts || parts.Count < 3)
+            return 0;
+
+        var degrees = ParseRational(parts[0]);
+        var minutes = ParseRational(parts[1]);
+        var seconds = ParseRational(parts[2]);
+
+        var coordinate = degrees + (minutes / 60.0) + (seconds / 3600.0);
+
+        // Apply hemisphere (S and W are negative)
+        if (reference == "S" || reference == "W")
+            coordinate = -coordinate;
+
+        return coordinate;
+    }
+
+    private double ParseRational(object rational)
+    {
+        if (rational is IDictionary<string, object> dict)
+        {
+            if (dict.TryGetValue("Numerator", out var num) &&
+                dict.TryGetValue("Denominator", out var denom))
+            {
+                var numerator = Convert.ToDouble(num);
+                var denominator = Convert.ToDouble(denom);
+                return denominator != 0 ? numerator / denominator : 0;
+            }
+        }
+
+        return 0;
+    }
+
+    private T? GetPropertyValue<T>(IDictionary<string, BitmapTypedValue> properties, string key)
+    {
+        if (properties.TryGetValue(key, out var value))
+        {
+            return (T?)value.Value;
+        }
+        return default;
+    }
+}
+
+public record ExifGpsData
+{
+    public double Latitude { get; init; }
+    public double Longitude { get; init; }
+    public bool HasGps { get; init; }
+    public string? LocationName { get; set; } // Populated via reverse geocoding
+}
+```
 
 **File**: `Services/ExifGpsExtractor.cs`
 
@@ -464,11 +771,111 @@ Detect when predictions are geographically clustered to boost confidence.
 
 ### Implementation
 
-See previous response for full implementation with:
-- Haversine distance calculation
-- Clustering detection (100km radius)
-- Confidence boost calculation
-- Hotspot identification
+```csharp
+// Services/GeographicClusterAnalyzer.cs
+public class GeographicClusterAnalyzer
+{
+    private const double ClusterRadiusKm = 100.0;
+    private const double EarthRadiusKm = 6371.0;
+
+    public ClusterAnalysisResult AnalyzePredictions(List<LocationPrediction> predictions)
+    {
+        if (predictions.Count < 2)
+        {
+            return new ClusterAnalysisResult
+            {
+                IsClustered = false,
+                ClusterRadius = 0,
+                ConfidenceBoost = 0
+            };
+        }
+
+        // Take top 3 predictions for clustering analysis
+        var topPredictions = predictions.Take(3).ToList();
+
+        // Calculate pairwise distances
+        var distances = new List<double>();
+        for (int i = 0; i < topPredictions.Count; i++)
+        {
+            for (int j = i + 1; j < topPredictions.Count; j++)
+            {
+                var distance = CalculateHaversineDistance(
+                    topPredictions[i].Latitude,
+                    topPredictions[i].Longitude,
+                    topPredictions[j].Latitude,
+                    topPredictions[j].Longitude
+                );
+                distances.Add(distance);
+            }
+        }
+
+        var maxDistance = distances.Max();
+        var avgDistance = distances.Average();
+
+        // Clustering criteria: all top 3 predictions within 100km
+        var isClustered = maxDistance <= ClusterRadiusKm;
+
+        if (!isClustered)
+        {
+            return new ClusterAnalysisResult
+            {
+                IsClustered = false,
+                ClusterRadius = maxDistance,
+                ConfidenceBoost = 0
+            };
+        }
+
+        // Calculate confidence boost (inverse relationship with distance)
+        // Closer clusters get higher boost (max +0.15)
+        var confidenceBoost = Math.Max(0, 0.15 * (1 - (avgDistance / ClusterRadiusKm)));
+
+        // Calculate cluster center (centroid)
+        var centerLat = topPredictions.Average(p => p.Latitude);
+        var centerLon = topPredictions.Average(p => p.Longitude);
+
+        return new ClusterAnalysisResult
+        {
+            IsClustered = true,
+            ClusterRadius = maxDistance,
+            AverageDistance = avgDistance,
+            ConfidenceBoost = confidenceBoost,
+            ClusterCenterLat = centerLat,
+            ClusterCenterLon = centerLon
+        };
+    }
+
+    public double CalculateHaversineDistance(
+        double lat1, double lon1,
+        double lat2, double lon2)
+    {
+        var dLat = ToRadians(lat2 - lat1);
+        var dLon = ToRadians(lon2 - lon1);
+
+        var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
+                Math.Cos(ToRadians(lat1)) * Math.Cos(ToRadians(lat2)) *
+                Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
+
+        var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+
+        return EarthRadiusKm * c;
+    }
+
+    private double ToRadians(double degrees)
+    {
+        return degrees * Math.PI / 180.0;
+    }
+}
+
+public record ClusterAnalysisResult
+{
+    public bool IsClustered { get; init; }
+    public double ClusterRadius { get; init; }
+    public double AverageDistance { get; init; }
+    public double ConfidenceBoost { get; init; }
+    public double ClusterCenterLat { get; init; }
+    public double ClusterCenterLon { get; init; }
+}
+```
 
 **File**: `Services/GeographicClusterAnalyzer.cs`
 
@@ -625,10 +1032,268 @@ Export predictions to CSV, PDF, and KML formats.
 
 ### Implementation
 
-See previous response for full implementation with:
-- CSV export using CsvHelper
-- PDF export using QuestPDF
-- KML export for Google Earth
+```csharp
+// Services/ExportService.cs
+using CsvHelper;
+using CsvHelper.Configuration;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
+using System.Globalization;
+using System.Xml.Linq;
+
+public class ExportService
+{
+    public async Task ExportToCsvAsync(
+        List<EnhancedPredictionResult> results,
+        string outputPath)
+    {
+        var records = new List<CsvExportRecord>();
+
+        foreach (var result in results)
+        {
+            // Add EXIF GPS if present
+            if (result.ExifGps != null)
+            {
+                records.Add(new CsvExportRecord
+                {
+                    ImagePath = result.ImagePath,
+                    Rank = 0,
+                    Source = "EXIF GPS",
+                    Latitude = result.ExifGps.Latitude,
+                    Longitude = result.ExifGps.Longitude,
+                    Confidence = 1.0,
+                    LocationName = result.ExifGps.LocationName ?? "",
+                    City = "",
+                    State = "",
+                    Country = ""
+                });
+            }
+
+            // Add AI predictions
+            foreach (var pred in result.AiPredictions)
+            {
+                records.Add(new CsvExportRecord
+                {
+                    ImagePath = result.ImagePath,
+                    Rank = pred.Rank,
+                    Source = "AI Prediction",
+                    Latitude = pred.Latitude,
+                    Longitude = pred.Longitude,
+                    Confidence = pred.AdjustedProbability,
+                    LocationName = pred.LocationSummary,
+                    City = pred.City,
+                    State = pred.State,
+                    Country = pred.Country
+                });
+            }
+        }
+
+        using var writer = new StreamWriter(outputPath);
+        using var csv = new CsvWriter(writer, new CsvConfiguration(CultureInfo.InvariantCulture)
+        {
+            HasHeaderRecord = true
+        });
+
+        await csv.WriteRecordsAsync(records);
+    }
+
+    public async Task ExportToPdfAsync(
+        List<EnhancedPredictionResult> results,
+        string outputPath)
+    {
+        var document = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(50);
+                page.PageColor(Colors.White);
+                page.DefaultTextStyle(x => x.FontSize(11));
+
+                page.Header().Element(ComposeHeader);
+                page.Content().Element(content => ComposeContent(content, results));
+                page.Footer().AlignCenter().Text(text =>
+                {
+                    text.CurrentPageNumber();
+                    text.Span(" / ");
+                    text.TotalPages();
+                });
+            });
+        });
+
+        await Task.Run(() => document.GeneratePdf(outputPath));
+    }
+
+    private void ComposeHeader(IContainer container)
+    {
+        container.Row(row =>
+        {
+            row.RelativeItem().Column(column =>
+            {
+                column.Item().Text("GeoLens Prediction Report")
+                    .FontSize(20).SemiBold().FontColor(Colors.Blue.Medium);
+
+                column.Item().Text($"Generated: {DateTime.Now:yyyy-MM-dd HH:mm:ss}")
+                    .FontSize(10).FontColor(Colors.Grey.Darken2);
+            });
+        });
+    }
+
+    private void ComposeContent(IContainer container, List<EnhancedPredictionResult> results)
+    {
+        container.PaddingVertical(20).Column(column =>
+        {
+            column.Spacing(15);
+
+            foreach (var result in results)
+            {
+                column.Item().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).PaddingBottom(10).Column(item =>
+                {
+                    item.Item().Text(Path.GetFileName(result.ImagePath))
+                        .FontSize(14).SemiBold();
+
+                    if (result.ExifGps != null)
+                    {
+                        item.Item().PaddingLeft(10).Text(text =>
+                        {
+                            text.Span("EXIF GPS: ").SemiBold().FontColor(Colors.Green.Darken1);
+                            text.Span($"{result.ExifGps.Latitude:F6}, {result.ExifGps.Longitude:F6}");
+                        });
+                    }
+
+                    item.Item().PaddingLeft(10).Table(table =>
+                    {
+                        table.ColumnsDefinition(columns =>
+                        {
+                            columns.ConstantColumn(40);
+                            columns.RelativeColumn();
+                            columns.ConstantColumn(100);
+                            columns.ConstantColumn(80);
+                        });
+
+                        table.Header(header =>
+                        {
+                            header.Cell().Text("Rank").SemiBold();
+                            header.Cell().Text("Location").SemiBold();
+                            header.Cell().Text("Coordinates").SemiBold();
+                            header.Cell().Text("Confidence").SemiBold();
+                        });
+
+                        foreach (var pred in result.AiPredictions)
+                        {
+                            table.Cell().Text(pred.Rank.ToString());
+                            table.Cell().Text(pred.LocationSummary);
+                            table.Cell().Text($"{pred.Latitude:F4}, {pred.Longitude:F4}");
+                            table.Cell().Text($"{pred.AdjustedProbability:P1}");
+                        }
+                    });
+                });
+            }
+        });
+    }
+
+    public async Task ExportToKmlAsync(
+        List<EnhancedPredictionResult> results,
+        string outputPath)
+    {
+        var kml = new XDocument(
+            new XDeclaration("1.0", "UTF-8", null),
+            new XElement("kml",
+                new XAttribute("xmlns", "http://www.opengis.net/kml/2.2"),
+                new XElement("Document",
+                    new XElement("name", "GeoLens Predictions"),
+                    new XElement("description", $"Generated {DateTime.Now:yyyy-MM-dd HH:mm:ss}"),
+
+                    // Styles
+                    CreateKmlStyle("exifStyle", "ff00ffff", 1.2), // Cyan for EXIF
+                    CreateKmlStyle("highStyle", "ff00ff00", 1.0), // Green for high confidence
+                    CreateKmlStyle("mediumStyle", "ff00ffff", 0.8), // Yellow for medium
+                    CreateKmlStyle("lowStyle", "ff0000ff", 0.6), // Red for low
+
+                    // Placemarks
+                    from result in results
+                    from placemark in CreatePlacemarks(result)
+                    select placemark
+                )
+            )
+        );
+
+        using var writer = new StreamWriter(outputPath);
+        await writer.WriteAsync(kml.ToString());
+    }
+
+    private XElement CreateKmlStyle(string id, string color, double scale)
+    {
+        return new XElement("Style",
+            new XAttribute("id", id),
+            new XElement("IconStyle",
+                new XElement("color", color),
+                new XElement("scale", scale),
+                new XElement("Icon",
+                    new XElement("href", "http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png")
+                )
+            )
+        );
+    }
+
+    private IEnumerable<XElement> CreatePlacemarks(EnhancedPredictionResult result)
+    {
+        var placemarks = new List<XElement>();
+
+        // EXIF GPS placemark
+        if (result.ExifGps != null)
+        {
+            placemarks.Add(new XElement("Placemark",
+                new XElement("name", $"EXIF GPS - {Path.GetFileName(result.ImagePath)}"),
+                new XElement("description", result.ExifGps.LocationName ?? "GPS from image metadata"),
+                new XElement("styleUrl", "#exifStyle"),
+                new XElement("Point",
+                    new XElement("coordinates", $"{result.ExifGps.Longitude},{result.ExifGps.Latitude},0")
+                )
+            ));
+        }
+
+        // AI prediction placemarks
+        foreach (var pred in result.AiPredictions)
+        {
+            var style = pred.ConfidenceLevel switch
+            {
+                ConfidenceLevel.High => "#highStyle",
+                ConfidenceLevel.Medium => "#mediumStyle",
+                _ => "#lowStyle"
+            };
+
+            placemarks.Add(new XElement("Placemark",
+                new XElement("name", $"Rank {pred.Rank}: {pred.LocationSummary}"),
+                new XElement("description",
+                    $"Confidence: {pred.AdjustedProbability:P1}\n" +
+                    $"Image: {Path.GetFileName(result.ImagePath)}"),
+                new XElement("styleUrl", style),
+                new XElement("Point",
+                    new XElement("coordinates", $"{pred.Longitude},{pred.Latitude},0")
+                )
+            ));
+        }
+
+        return placemarks;
+    }
+}
+
+public record CsvExportRecord
+{
+    public string ImagePath { get; init; } = "";
+    public int Rank { get; init; }
+    public string Source { get; init; } = "";
+    public double Latitude { get; init; }
+    public double Longitude { get; init; }
+    public double Confidence { get; init; }
+    public string LocationName { get; init; } = "";
+    public string City { get; init; } = "";
+    public string State { get; init; } = "";
+    public string Country { get; init; } = "";
+}
+```
 
 **File**: `Services/ExportService.cs`
 
@@ -641,11 +1306,78 @@ Aggregate predictions from multiple images into a heatmap visualization.
 
 ### Implementation
 
-See previous response for full implementation with:
-- 360×180 grid (1° resolution)
-- Gaussian kernel smoothing
-- Hotspot detection and clustering
-- Normalization (0-1 range)
+**See `/Docs/05_Heatmap_MultiImage.md` for complete implementation** (lines 159-412).
+
+Key components:
+- **Grid-based approach**: 360×180 grid (1° resolution)
+- **Gaussian smoothing**: Apply kernel to each prediction with sigma=3.0
+- **Normalization**: Scale all values to 0-1 range
+- **Hotspot detection**: Find clusters above 0.7 threshold
+- **Clustering algorithm**: Flood-fill to merge adjacent hotspots
+
+**Quick reference**:
+
+```csharp
+// Services/PredictionHeatmapGenerator.cs
+public class PredictionHeatmapGenerator
+{
+    private const int GridWidth = 360;
+    private const int GridHeight = 180;
+    private const double GaussianSigma = 3.0;
+
+    public HeatmapData GenerateHeatmap(List<EnhancedPredictionResult> results)
+    {
+        var aggregator = new PredictionAggregator();
+        var predictions = aggregator.AggregateFromResults(results);
+
+        var grid = new double[GridWidth, GridHeight];
+
+        // Apply Gaussian kernel for each prediction
+        foreach (var pred in predictions)
+        {
+            ApplyGaussianKernel(grid, pred.Latitude, pred.Longitude, pred.Weight, GaussianSigma);
+        }
+
+        NormalizeGrid(grid);
+
+        var hotspots = DetectHotspots(grid, threshold: 0.7);
+
+        return new HeatmapData
+        {
+            Grid = grid,
+            Resolution = 1.0,
+            PredictionCount = predictions.Count,
+            ImageCount = results.Count,
+            HotspotRegions = hotspots,
+            Statistics = aggregator.GetStatistics(predictions)
+        };
+    }
+
+    private void ApplyGaussianKernel(double[,] grid, double lat, double lon, double weight, double sigma)
+    {
+        // Convert lat/lon to grid coordinates
+        int centerX = (int)Math.Round((lon + 180) % 360);
+        int centerY = (int)Math.Round(90 - lat);
+        int radius = (int)(sigma * 3);
+
+        for (int dx = -radius; dx <= radius; dx++)
+        {
+            for (int dy = -radius; dy <= radius; dy++)
+            {
+                int x = (centerX + dx + GridWidth) % GridWidth;
+                int y = centerY + dy;
+                if (y < 0 || y >= GridHeight) continue;
+
+                double distance = Math.Sqrt(dx * dx + dy * dy);
+                double gaussianValue = Math.Exp(-(distance * distance) / (2 * sigma * sigma));
+                grid[x, y] += weight * gaussianValue;
+            }
+        }
+    }
+
+    // See full implementation in /Docs/05_Heatmap_MultiImage.md
+}
+```
 
 **File**: `Services/PredictionHeatmapGenerator.cs`
 

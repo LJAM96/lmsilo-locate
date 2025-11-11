@@ -4,6 +4,17 @@
 
 This is your master implementation document. Follow the phases in order for a smooth build process.
 
+## 💻 Platform Requirements
+
+**Primary Target**: Windows 10/11 x64 (Intel/AMD)
+- This is the **required** platform for all development and testing
+- All features must work correctly on x64 architecture
+
+**Bonus Target**: Windows ARM64 (Snapdragon X Elite/Plus)
+- ARM64 support is **appreciated but not required**
+- If implementing ARM64, ensure x64 remains fully functional
+- Note: PyTorch ARM64 support on Windows is experimental
+
 ---
 
 ## 📚 Documentation Structure
@@ -598,6 +609,257 @@ Before considering project complete:
 
 ---
 
+## ✅ Verification & Testing Commands
+
+### Python Backend Verification
+
+**Smoke Test** (verify GeoCLIP model loads and predicts):
+```bash
+# Run smoke test with auto-detected hardware
+python -m Core.smoke_test --device auto
+
+# Test specific device
+python -m Core.smoke_test --device cpu
+python -m Core.smoke_test --device cuda
+python -m Core.smoke_test --device rocm
+```
+
+**Expected output**:
+```
+GeoCLIP Smoke Test
+==================
+Device: cuda
+Loading model...
+Model loaded successfully
+Running inference on test image...
+Top 5 predictions:
+  1. Tokyo, Japan (34.69, 139.69) - 0.823
+  2. Osaka, Japan (34.69, 135.50) - 0.091
+  ...
+Smoke test passed ✓
+```
+
+**Start FastAPI Service** (for integration testing):
+```bash
+# Start service manually
+cd /path/to/geolens
+uvicorn Core.api_service:app --reload --port 8899
+
+# Health check
+curl http://localhost:8899/health
+
+# Test prediction endpoint
+curl -X POST http://localhost:8899/infer \
+  -F "files=@test_image.jpg" \
+  -F "top_k=5"
+```
+
+### C# Frontend Verification
+
+**Build and Run**:
+```bash
+# Restore dependencies
+dotnet restore GeoLens.sln
+
+# Build (Debug)
+dotnet build GeoLens.sln --configuration Debug
+
+# Build (Release)
+dotnet build GeoLens.sln --configuration Release
+
+# Run application
+dotnet run --project GeoLens.csproj
+```
+
+**Code Formatting**:
+```bash
+# Check formatting
+dotnet format --verify-no-changes
+
+# Apply formatting
+dotnet format
+```
+
+**Run Tests** (once test project exists):
+```bash
+# All tests
+dotnet test GeoLens.Tests/GeoLens.Tests.csproj
+
+# Unit tests only
+dotnet test --filter "Category=Unit"
+
+# Integration tests only
+dotnet test --filter "Category=Integration"
+
+# With coverage
+dotnet test /p:CollectCoverage=true /p:CoverageReporter=html
+```
+
+### Phase Validation Checklist
+
+After completing each phase, verify the following:
+
+**Phase 1: Foundation**
+- [ ] `HardwareDetectionService` detects your GPU/CPU correctly
+- [ ] Python service starts via `PythonRuntimeManager.StartServiceAsync()`
+- [ ] Health check at `http://localhost:8899/health` returns `{"status": "healthy"}`
+- [ ] `GeoCLIPApiClient.PredictAsync()` returns valid predictions
+- [ ] No exceptions in Debug output window
+
+**Verification commands**:
+```csharp
+// In C# Interactive or a test harness
+var hardware = new HardwareDetectionService().DetectHardware();
+Console.WriteLine($"Detected: {hardware}"); // Should show CPU, CUDA, or ROCM
+
+var manager = new PythonRuntimeManager(hardware);
+var started = await manager.StartServiceAsync();
+Console.WriteLine($"Service started: {started}"); // Should be true
+
+var client = new GeoCLIPApiClient(manager.ApiBaseUrl);
+var health = await client.CheckHealthAsync();
+Console.WriteLine($"Service healthy: {health}"); // Should be true
+```
+
+**Phase 2: UI Foundation**
+- [ ] App launches without crashes
+- [ ] All three panels (image queue, map, results) render correctly
+- [ ] Drag-and-drop adds images to queue
+- [ ] "Process" button sends images to API
+- [ ] Results display in right panel
+- [ ] WebView2 initializes successfully
+
+**Phase 3: Visualization**
+- [ ] Dark globe renders with textures
+- [ ] Pins appear on globe after prediction
+- [ ] Pin colors match confidence levels (cyan/green/yellow/red)
+- [ ] Camera rotates to predictions smoothly
+- [ ] Tooltips show location details
+- [ ] No white flashes during loading
+
+**Phase 4: Advanced Features**
+- [ ] Cache hit returns result in <100ms
+- [ ] EXIF GPS extracted from JPEG images
+- [ ] Clustering detected when predictions are close
+- [ ] Confidence boosts applied correctly
+- [ ] SQLite database created in `%LOCALAPPDATA%\GeoLens\cache.db`
+
+**Verification**:
+```bash
+# Check cache database
+sqlite3 "%LOCALAPPDATA%\GeoLens\cache.db" "SELECT COUNT(*) FROM predictions;"
+
+# Check cache hit
+# Process same image twice; second time should be instant
+```
+
+**Phase 5: Multi-Image Heatmap**
+- [ ] Selecting 2+ images enables heatmap toggle
+- [ ] Heatmap renders with gradient colors
+- [ ] Hotspots detected correctly
+- [ ] Toggle switches between pins and heatmap
+- [ ] Performance: 100 images generate heatmap in <500ms
+
+**Phase 6: Export & Polish**
+- [ ] CSV export opens correctly in Excel
+- [ ] PDF export includes thumbnails and tables
+- [ ] KML export opens in Google Earth
+- [ ] Settings persist across app restarts
+- [ ] Cache cleanup removes old entries
+- [ ] Memory usage stays below 500MB during normal operation
+
+**Performance Benchmarks**:
+```bash
+# Run benchmarks (once BenchmarkDotNet is set up)
+dotnet run --project GeoLens.Benchmarks --configuration Release
+```
+
+### Logging and Diagnostics
+
+**Check Logs**:
+```bash
+# Application logs (if FileLogger is implemented)
+notepad "%LOCALAPPDATA%\GeoLens\logs\app.log"
+
+# Python service logs (stdout)
+# Check terminal where uvicorn was started
+
+# Windows Event Viewer (for crashes)
+eventvwr.msc
+# Navigate to: Windows Logs > Application
+# Filter by source: GeoLens
+```
+
+**Debug Output**:
+- All services use `Debug.WriteLine()` for diagnostics
+- View output in Visual Studio: View → Output → Show output from: Debug
+
+### Common Verification Issues
+
+**Python service won't start**:
+```bash
+# Check Python is installed
+python --version
+
+# Check port 8899 is available
+netstat -an | findstr :8899
+
+# Test manual service start
+cd /path/to/geolens
+python -m uvicorn Core.api_service:app --port 8899
+```
+
+**WebView2 not rendering**:
+- Install WebView2 Runtime: https://go.microsoft.com/fwlink/?linkid=2124701
+- Check: `C:\Program Files (x86)\Microsoft\EdgeWebView\`
+
+**EXIF extraction fails**:
+- Only JPEG and HEIC formats contain EXIF
+- Test with known image: Right-click → Properties → Details → GPS
+
+**Build fails in Release mode**:
+- Verify `<Optimize>false</Optimize>` is set for Release configuration
+- Check `<WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>`
+
+### Where to Log Results
+
+**Per-Phase Results**:
+- Create `TESTING_LOG.md` in project root
+- Document test results for each phase:
+
+```markdown
+# Testing Log
+
+## Phase 1: Foundation - 2025-01-15
+
+### Hardware Detection
+- ✅ Detected: CUDA (NVIDIA RTX 3060)
+- ✅ Service started in 12 seconds
+- ✅ Health check passed
+
+### API Integration
+- ✅ Prediction returned 5 results
+- ✅ Top prediction: Tokyo, Japan (0.823 confidence)
+- ⚠️  Network timeout after 30s (increased timeout to 60s)
+
+## Phase 2: UI Foundation - 2025-01-16
+...
+```
+
+**Integration Test Results**:
+```bash
+# Save test output to file
+dotnet test --logger "console;verbosity=detailed" > test_results.txt
+```
+
+**Benchmark Results**:
+```bash
+# BenchmarkDotNet outputs to BenchmarkDotNet.Artifacts/
+# Save these results for comparison across builds
+```
+
+---
+
 ## 🎉 You're Ready to Start!
 
 **Begin with Phase 0: Project Setup**
@@ -605,6 +867,7 @@ Before considering project complete:
 1. Create new WinUI 3 project
 2. Add NuGet packages
 3. Create folder structure
-4. Move to Phase 1: Foundation
+4. Run verification commands above to ensure environment is ready
+5. Move to Phase 1: Foundation
 
 Good luck! 🚀
