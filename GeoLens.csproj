@@ -61,6 +61,10 @@
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.*" />
     <PackageReference Include="System.Security.Permissions" Version="9.0.9" PrivateAssets="all" />
     <PackageReference Include="System.IO.Hashing" Version="9.0.0" />
+    <!-- Phase 2: Services Infrastructure -->
+    <PackageReference Include="System.Management" Version="9.0.0" />
+    <PackageReference Include="System.Net.Http.Json" Version="9.0.0" />
+    <PackageReference Include="System.Data.SQLite.Core" Version="1.0.119" />
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
   <ItemGroup>
