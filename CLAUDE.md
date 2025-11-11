@@ -211,13 +211,16 @@ The `Docs/` directory contains comprehensive design documents:
 |----------|---------|
 | `00_IMPLEMENTATION_START_HERE.md` | Master implementation checklist with 7 phases |
 | `01_Architecture_Overview.md` | High-level system design and technology stack |
-| `02_Service_Implementations.md` | Detailed C# service code examples |
+| `02_Service_Implementations.md` | Detailed C# service code examples, error recovery patterns |
 | `03_Dark_Mode_Maps.md` | Map visualization specifications |
 | `04_UI_Wireframes.md` | Layout and design specifications |
 | `05_Heatmap_MultiImage.md` | Heatmap system design and implementation |
 | `06_Implementation_Roadmap.md` | 8-10 week phased timeline |
 | `07_Fluent_UI_Design.md` | Windows 11 Fluent Design guidelines |
 | `08_EXIF_Metadata_System.md` | EXIF extraction and display specifications |
+| `09_Testing_Strategy.md` | Unit/integration/UI testing, benchmarking, CI workflows |
+| `10_Deployment_and_CI.md` | GitHub Actions, versioning, installer creation, releases |
+| `11_Advanced_Features.md` | Post-MVP features: batch processing, video support, accuracy validation |
 
 Refer to these documents when implementing new features. They contain detailed code examples and specifications.
 

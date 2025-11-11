@@ -701,6 +701,201 @@ App
 
 ---
 
+## 11. Error Recovery and Resilience
+
+### Purpose
+Implement robust error handling, automatic recovery, and graceful degradation.
+
+### Implementation Patterns
+
+```csharp
+// Services/ResilientPythonRuntimeManager.cs
+public class ResilientPythonRuntimeManager : PythonRuntimeManager
+{
+    private int _restartAttempts = 0;
+    private const int MaxRestartAttempts = 3;
+    private readonly TimeSpan _restartDelay = TimeSpan.FromSeconds(5);
+
+    public async Task<bool> EnsureRunningAsync()
+    {
+        if (IsRunning && await CheckHealthAsync())
+            return true;
+
+        // Service crashed or unhealthy
+        Debug.WriteLine("Python service is down, attempting restart...");
+
+        while (_restartAttempts < MaxRestartAttempts)
+        {
+            await StopServiceAsync();
+            await Task.Delay(_restartDelay);
+
+            if (await StartServiceAsync())
+            {
+                _restartAttempts = 0;
+                return true;
+            }
+
+            _restartAttempts++;
+        }
+
+        return false; // Failed to restart
+    }
+
+    private async Task<bool> CheckHealthAsync()
+    {
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+            var response = await client.GetAsync($"{ApiBaseUrl}/health");
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+}
+```
+
+### Corrupted Model Handling
+
+```csharp
+// Services/ModelIntegrityChecker.cs
+public class ModelIntegrityChecker
+{
+    private readonly string _modelsPath;
+    private readonly Dictionary<string, string> _expectedHashes;
+
+    public async Task<bool> VerifyModelsAsync()
+    {
+        foreach (var (file, expectedHash) in _expectedHashes)
+        {
+            var filePath = Path.Combine(_modelsPath, file);
+
+            if (!File.Exists(filePath))
+            {
+                Debug.WriteLine($"Missing model file: {file}");
+                return false;
+            }
+
+            var actualHash = await ComputeSHA256Async(filePath);
+            if (!actualHash.Equals(expectedHash, StringComparison.OrdinalIgnoreCase))
+            {
+                Debug.WriteLine($"Model file corrupted: {file}");
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private async Task<string> ComputeSHA256Async(string path)
+    {
+        using var sha256 = SHA256.Create();
+        using var stream = File.OpenRead(path);
+        var hashBytes = await sha256.ComputeHashAsync(stream);
+        return Convert.ToHexString(hashBytes);
+    }
+}
+```
+
+### Network Interruption Recovery
+
+```csharp
+// Services/ResilientMapProvider.cs
+public class ResilientMapProvider : IMapProvider
+{
+    private readonly IMapProvider _onlineProvider;
+    private readonly IMapProvider _offlineProvider;
+    private bool _useOfflineMode = false;
+
+    public async Task InitializeAsync()
+    {
+        try
+        {
+            await _onlineProvider.InitializeAsync();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Online maps unavailable: {ex.Message}");
+            Debug.WriteLine("Falling back to offline maps");
+            _useOfflineMode = true;
+            await _offlineProvider.InitializeAsync();
+        }
+    }
+
+    public async Task AddPinAsync(double lat, double lon, string label, double confidence, int rank, bool isExif = false)
+    {
+        var provider = _useOfflineMode ? _offlineProvider : _onlineProvider;
+        await provider.AddPinAsync(lat, lon, label, confidence, rank, isExif);
+    }
+
+    // Implement other IMapProvider methods similarly
+}
+```
+
+---
+
+## 12. Logging Strategy
+
+### Purpose
+Comprehensive logging for debugging and diagnostics.
+
+### Implementation
+
+```csharp
+// Services/FileLogger.cs
+public class FileLogger : IDisposable
+{
+    private readonly StreamWriter _writer;
+    private readonly SemaphoreSlim _semaphore = new(1);
+
+    public FileLogger(string logPath)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+        _writer = new StreamWriter(logPath, append: true) { AutoFlush = true };
+    }
+
+    public async Task LogAsync(LogLevel level, string category, string message, Exception? exception = null)
+    {
+        await _semaphore.WaitAsync();
+        try
+        {
+            var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
+            var logLine = $"[{timestamp}] [{level}] [{category}] {message}";
+
+            await _writer.WriteLineAsync(logLine);
+
+            if (exception != null)
+            {
+                await _writer.WriteLineAsync($"Exception: {exception}");
+            }
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
+    }
+
+    public void Dispose()
+    {
+        _writer?.Dispose();
+        _semaphore?.Dispose();
+    }
+}
+
+public enum LogLevel
+{
+    Debug,
+    Info,
+    Warning,
+    Error,
+    Critical
+}
+```
+
+---
+
 ## Testing Strategy
 
 ### Unit Tests

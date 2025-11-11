@@ -245,15 +245,18 @@ GeoLens/
 - **Training Data**: OpenStreetMap + public image datasets
 - **No PII**: Model trained on publicly available data
 
-## Future Enhancements
+## Advanced Features (Post-MVP)
 
-### Potential Features
+See `11_Advanced_Features.md` for detailed implementation guides.
 
-1. **Video Frame Analysis**: Extract frames and predict locations
-2. **Batch Export**: Process entire folders automatically
-3. **Timeline View**: Show predictions on temporal axis
-4. **3D Street View**: Integrate with local street view data
-5. **Accuracy Metrics**: Compare with EXIF GPS when available
+### Planned Enhancements
+
+1. **Batch Processing**: Watch folders, CLI interface, Windows Explorer integration
+2. **Accuracy Validation**: Compare AI predictions with EXIF GPS ground truth
+3. **Video Support**: Extract frames, detect scene changes, generate travel routes
+4. **Advanced Visualization**: 3D terrain overlay, street-level preview (Mapillary)
+5. **Performance Profiling**: Track metrics, identify bottlenecks
+6. **Security**: Secure cache deletion, optional encryption at rest
 
 ## References
 
