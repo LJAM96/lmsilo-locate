@@ -1,0 +1,57 @@
+﻿<Project>
+  <PropertyGroup>
+    <_WinUIToolVersion>1.8.250916003</_WinUIToolVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <_WinUIToolDir Include="$(NuGetPackageRoot)microsoft.windowsappsdk.winui\$(_WinUIToolVersion)\tools\net6.0\" Condition="Exists('$(NuGetPackageRoot)microsoft.windowsappsdk.winui\$(_WinUIToolVersion)\tools\net6.0\')" />
+    <_WinUIToolDir Include="$(NuGetPackageRoot)microsoft.windowsappsdk\$(_WinUIToolVersion)\tools\net6.0\" Condition="Exists('$(NuGetPackageRoot)microsoft.windowsappsdk\$(_WinUIToolVersion)\tools\net6.0\')" />
+    <_WinUIToolDir Include="$(NuGetPackageRoot)microsoft.windowsappsdk.winui\$(_WinUIToolVersion)\tools\net472\" Condition="Exists('$(NuGetPackageRoot)microsoft.windowsappsdk.winui\$(_WinUIToolVersion)\tools\net472\')" />
+    <_WinUIToolDir Include="$(NuGetPackageRoot)microsoft.windowsappsdk\$(_WinUIToolVersion)\tools\net472\" Condition="Exists('$(NuGetPackageRoot)microsoft.windowsappsdk\$(_WinUIToolVersion)\tools\net472\')" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <_PermissionsBinary Condition="Exists('$(NuGetPackageRoot)system.security.permissions\9.0.9\lib\net462\System.Security.Permissions.dll')">$(NuGetPackageRoot)system.security.permissions\9.0.9\lib\net462\System.Security.Permissions.dll</_PermissionsBinary>
+    <_PermissionsBinary Condition="$(_PermissionsBinary) == '' and Exists('$(NuGetPackageRoot)system.security.permissions\8.0.0\lib\net462\System.Security.Permissions.dll')">$(NuGetPackageRoot)system.security.permissions\8.0.0\lib\net462\System.Security.Permissions.dll</_PermissionsBinary>
+    <_PermissionsBinary Condition="$(_PermissionsBinary) == '' and Exists('$(NuGetPackageRoot)system.security.permissions\7.0.0\lib\net462\System.Security.Permissions.dll')">$(NuGetPackageRoot)system.security.permissions\7.0.0\lib\net462\System.Security.Permissions.dll</_PermissionsBinary>
+    <_PermissionsBinary Condition="$(_PermissionsBinary) == '' and Exists('$(NuGetPackageRoot)system.security.permissions\6.0.0\lib\net461\System.Security.Permissions.dll')">$(NuGetPackageRoot)system.security.permissions\6.0.0\lib\net461\System.Security.Permissions.dll</_PermissionsBinary>
+  </PropertyGroup>
+
+  <Target Name="EnsureXamlCompilerDependencies" BeforeTargets="MarkupCompilePass1">
+    <Message Text="Ensuring System.Security.Permissions for WinUI Xaml compiler" Importance="High" />
+    <Copy SourceFiles="$(_PermissionsBinary)"
+          DestinationFolder="%(_WinUIToolDir.FullPath)"
+          SkipUnchangedFiles="true"
+          Condition="$(_PermissionsBinary) != '' and %(_WinUIToolDir.Identity) != ''" />
+  </Target>
+
+  <!-- Download WebView2 Runtime installers if not present -->
+  <Target Name="DownloadWebView2Runtime" BeforeTargets="BeforeBuild" Condition="'$(Configuration)' == 'Release'">
+    <PropertyGroup>
+      <WebView2RedistDir>$(MSBuildProjectDirectory)\installer\redist</WebView2RedistDir>
+      <WebView2DownloadUrl>https://go.microsoft.com/fwlink/p/?LinkId=2124703</WebView2DownloadUrl>
+      <WebView2x64File>$(WebView2RedistDir)\MicrosoftEdgeWebView2RuntimeInstaller_x64.exe</WebView2x64File>
+    </PropertyGroup>
+    
+    <Message Text="Checking for WebView2 Runtime installers in $(WebView2RedistDir)" Importance="High" />
+    
+    <!-- Download x64 if missing -->
+    <DownloadFile SourceUrl="$(WebView2DownloadUrl)"
+                  DestinationFolder="$(WebView2RedistDir)"
+                  DestinationFileName="MicrosoftEdgeWebView2RuntimeInstaller_x64.exe"
+                  Condition="!Exists('$(WebView2x64File)')"
+                  SkipUnchangedFiles="true">
+      <Output TaskParameter="DownloadedFile" ItemName="WebView2Downloaded" />
+    </DownloadFile>
+    <Message Text="Downloaded WebView2 Runtime x64 installer" Condition="!Exists('$(WebView2x64File)')" Importance="High" />
+    
+    <Message Text="WebView2 Runtime installers ready for packaging" Importance="High" Condition="Exists('$(WebView2x64File)')" />
+  </Target>
+
+  <!-- Removed XamlCompilerWrapper - using standard XAML compiler from Windows App SDK -->
+</Project>
+
+
+
+
+

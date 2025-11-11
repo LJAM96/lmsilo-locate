@@ -1,0 +1,4 @@
+--extra-index-url https://download.pytorch.org/whl/rocm6.0
+-r requirements.txt
+torch==2.6.0+rocm6.0
+torchvision==0.21.0+rocm6.0

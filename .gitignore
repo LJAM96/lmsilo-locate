@@ -1,0 +1,22 @@
+# Binaries / build
+bin/
+obj/
+
+# Visual Studio
+*.user
+*.suo
+*.userosscache
+*.vsp
+*.vsix
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+env/
+
+# Logs
+*.log

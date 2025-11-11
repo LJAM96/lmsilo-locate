@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "GeoLens (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "GeoLens (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
