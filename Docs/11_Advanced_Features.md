@@ -797,6 +797,8 @@ const terrainBumpTexture = new THREE.TextureLoader().load('earth_bump_8k.jpg');
 
 ### 4.2 Street-Level Preview Integration
 
+#### Mapillary Integration (2D Street Images)
+
 ```csharp
 // Services/StreetViewProvider.cs
 public class StreetViewProvider
@@ -854,6 +856,446 @@ public record StreetViewImage
     public double Latitude { get; init; }
     public double Longitude { get; init; }
     public string ViewUrl { get; init; } = "";
+}
+```
+
+#### 3D Street View Integration
+
+Full 3D immersive street view using local data caches or online services.
+
+```csharp
+// Services/StreetView3DProvider.cs
+public class StreetView3DProvider
+{
+    private readonly HttpClient _http;
+    private readonly string _cacheDirectory;
+
+    public StreetView3DProvider()
+    {
+        _http = new HttpClient();
+        _cacheDirectory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "GeoLens",
+            "StreetViewCache"
+        );
+        Directory.CreateDirectory(_cacheDirectory);
+    }
+
+    public async Task<StreetView3DData?> Get3DStreetViewAsync(
+        double lat,
+        double lon,
+        int heading = 0,
+        int pitch = 0,
+        int fov = 90)
+    {
+        // Option 1: Google Street View Static API (requires API key)
+        var googleApiKey = GetGoogleApiKey(); // From settings
+        if (!string.IsNullOrEmpty(googleApiKey))
+        {
+            return await GetGoogleStreetView3DAsync(lat, lon, heading, pitch, fov, googleApiKey);
+        }
+
+        // Option 2: Mapillary 360° images
+        return await GetMapillary360Async(lat, lon, heading);
+    }
+
+    private async Task<StreetView3DData?> GetGoogleStreetView3DAsync(
+        double lat,
+        double lon,
+        int heading,
+        int pitch,
+        int fov,
+        string apiKey)
+    {
+        // First, check if Street View is available at this location
+        var metadataUrl = $"https://maps.googleapis.com/maps/api/streetview/metadata?" +
+                         $"location={lat},{lon}&key={apiKey}";
+
+        var metadataResponse = await _http.GetFromJsonAsync<GoogleStreetViewMetadata>(metadataUrl);
+
+        if (metadataResponse?.Status != "OK")
+        {
+            return null; // No street view available
+        }
+
+        // Download panorama images (6 faces for cubemap or equirectangular)
+        var panoramaUrl = $"https://maps.googleapis.com/maps/api/streetview?" +
+                         $"size=640x640&location={lat},{lon}&heading={heading}&pitch={pitch}" +
+                         $"&fov={fov}&key={apiKey}";
+
+        var imageBytes = await _http.GetByteArrayAsync(panoramaUrl);
+
+        // Cache the image
+        var cacheKey = $"{lat:F6}_{lon:F6}_{heading}_{pitch}.jpg";
+        var cachePath = Path.Combine(_cacheDirectory, cacheKey);
+        await File.WriteAllBytesAsync(cachePath, imageBytes);
+
+        return new StreetView3DData
+        {
+            Latitude = metadataResponse.Location.Lat,
+            Longitude = metadataResponse.Location.Lng,
+            Heading = heading,
+            Pitch = pitch,
+            ImagePath = cachePath,
+            PanoId = metadataResponse.PanoId,
+            CaptureDate = metadataResponse.Date,
+            Provider = "Google Street View"
+        };
+    }
+
+    private async Task<StreetView3DData?> GetMapillary360Async(
+        double lat,
+        double lon,
+        int heading)
+    {
+        // Query Mapillary for 360° panoramic images
+        var bbox = CalculateBoundingBox(lat, lon, 50);
+        var url = $"https://graph.mapillary.com/images?bbox={bbox}" +
+                 $"&fields=id,thumb_original_url,geometry,camera_type,captured_at" +
+                 $"&is_pano=true"; // Only 360° images
+
+        try
+        {
+            var response = await _http.GetFromJsonAsync<MapillaryResponse>(url);
+
+            if (response?.Data?.Any() == true)
+            {
+                var nearest = response.Data.First();
+
+                // Download the panoramic image
+                var imageBytes = await _http.GetByteArrayAsync(nearest.ThumbOriginalUrl);
+
+                var cacheKey = $"mapillary_{nearest.Id}.jpg";
+                var cachePath = Path.Combine(_cacheDirectory, cacheKey);
+                await File.WriteAllBytesAsync(cachePath, imageBytes);
+
+                return new StreetView3DData
+                {
+                    Latitude = nearest.Geometry.Coordinates[1],
+                    Longitude = nearest.Geometry.Coordinates[0],
+                    Heading = heading,
+                    ImagePath = cachePath,
+                    PanoId = nearest.Id,
+                    CaptureDate = nearest.CapturedAt,
+                    Provider = "Mapillary",
+                    Is360 = true
+                };
+            }
+        }
+        catch { }
+
+        return null;
+    }
+
+    private string CalculateBoundingBox(double lat, double lon, int radiusMeters)
+    {
+        double latOffset = radiusMeters / 111320.0;
+        double lonOffset = radiusMeters / (111320.0 * Math.Cos(lat * Math.PI / 180));
+        return $"{lon - lonOffset},{lat - latOffset},{lon + lonOffset},{lat + latOffset}";
+    }
+
+    private string? GetGoogleApiKey()
+    {
+        // Read from user settings or environment variable
+        return Environment.GetEnvironmentVariable("GOOGLE_MAPS_API_KEY");
+    }
+}
+
+public record StreetView3DData
+{
+    public double Latitude { get; init; }
+    public double Longitude { get; init; }
+    public int Heading { get; init; }
+    public int Pitch { get; init; }
+    public string ImagePath { get; init; } = "";
+    public string PanoId { get; init; } = "";
+    public string CaptureDate { get; init; } = "";
+    public string Provider { get; init; } = "";
+    public bool Is360 { get; init; }
+}
+
+public record GoogleStreetViewMetadata
+{
+    public string Status { get; init; } = "";
+    public string PanoId { get; init; } = "";
+    public Location Location { get; init; } = new();
+    public string Date { get; init; } = "";
+}
+
+public record Location
+{
+    public double Lat { get; init; }
+    public double Lng { get; init; }
+}
+```
+
+#### 3D Street View Viewer (WebView2 or Win2D)
+
+```html
+<!-- Assets/StreetView/viewer_360.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>GeoLens 3D Street View</title>
+    <script src="three.min.js"></script>
+    <script src="pannellum.min.js"></script>
+    <link rel="stylesheet" href="pannellum.css">
+    <style>
+        body {
+            margin: 0;
+            background: #0a0a0a;
+            overflow: hidden;
+        }
+        #panorama {
+            width: 100vw;
+            height: 100vh;
+        }
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(20, 20, 20, 0.9);
+            padding: 12px 20px;
+            border-radius: 8px;
+            color: white;
+            font-family: 'Segoe UI', sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <div id="panorama"></div>
+    <div class="controls">
+        <span id="location-info"></span>
+    </div>
+
+    <script>
+        let viewer;
+
+        function loadPanorama(imagePath, lat, lon, heading, provider, captureDate) {
+            viewer = pannellum.viewer('panorama', {
+                type: 'equirectangular',
+                panorama: imagePath,
+                autoLoad: true,
+                showControls: true,
+                compass: true,
+                northOffset: heading,
+                hfov: 100,
+                pitch: 0,
+                yaw: heading,
+                minHfov: 50,
+                maxHfov: 120,
+                backgroundColor: [10, 10, 10]
+            });
+
+            // Update location info
+            document.getElementById('location-info').textContent =
+                `${lat.toFixed(6)}, ${lon.toFixed(6)} | ${provider} | ${captureDate}`;
+        }
+
+        function setHeading(heading) {
+            if (viewer) {
+                viewer.setYaw(heading);
+            }
+        }
+
+        function setPitch(pitch) {
+            if (viewer) {
+                viewer.setPitch(pitch);
+            }
+        }
+
+        function setFov(fov) {
+            if (viewer) {
+                viewer.setHfov(fov);
+            }
+        }
+    </script>
+</body>
+</html>
+```
+
+#### C# Integration with WebView2
+
+```csharp
+// Views/StreetView3DWindow.xaml.cs
+public sealed partial class StreetView3DWindow : Window
+{
+    private readonly StreetView3DProvider _provider;
+
+    public StreetView3DWindow()
+    {
+        InitializeComponent();
+        _provider = new StreetView3DProvider();
+    }
+
+    public async Task ShowLocationAsync(double lat, double lon, int heading = 0)
+    {
+        // Show loading indicator
+        LoadingRing.IsActive = true;
+
+        // Fetch 3D street view data
+        var streetViewData = await _provider.Get3DStreetViewAsync(lat, lon, heading);
+
+        if (streetViewData == null)
+        {
+            // No street view available
+            ShowError("No street view available for this location");
+            LoadingRing.IsActive = false;
+            return;
+        }
+
+        // Initialize WebView2
+        await StreetViewWebView.EnsureCoreWebView2Async();
+
+        // Load the panorama viewer
+        var viewerPath = Path.Combine(
+            AppContext.BaseDirectory,
+            "Assets",
+            "StreetView",
+            "viewer_360.html"
+        );
+
+        StreetViewWebView.Source = new Uri(viewerPath);
+
+        // Wait for page to load
+        await Task.Delay(1000);
+
+        // Load the panorama image
+        var script = $"loadPanorama(" +
+                    $"'{streetViewData.ImagePath.Replace("\\", "\\\\")}', " +
+                    $"{streetViewData.Latitude}, " +
+                    $"{streetViewData.Longitude}, " +
+                    $"{streetViewData.Heading}, " +
+                    $"'{streetViewData.Provider}', " +
+                    $"'{streetViewData.CaptureDate}')";
+
+        await StreetViewWebView.ExecuteScriptAsync(script);
+
+        LoadingRing.IsActive = false;
+    }
+
+    private void ShowError(string message)
+    {
+        ErrorText.Text = message;
+        ErrorBar.IsOpen = true;
+    }
+}
+```
+
+#### UI Integration - Street View Button
+
+```xml
+<!-- Add to prediction result card -->
+<Button Click="ViewIn3DStreetView_Click"
+        ToolTipService.ToolTip="View in 3D Street View">
+    <StackPanel Orientation="Horizontal" Spacing="8">
+        <FontIcon Glyph="&#xE81D;" FontSize="16"/>
+        <TextBlock Text="Street View 3D"/>
+    </StackPanel>
+</Button>
+```
+
+```csharp
+// MainPage.xaml.cs
+private async void ViewIn3DStreetView_Click(object sender, RoutedEventArgs e)
+{
+    var button = sender as Button;
+    var prediction = button?.DataContext as LocationPrediction;
+
+    if (prediction == null) return;
+
+    var streetViewWindow = new StreetView3DWindow();
+    await streetViewWindow.ShowLocationAsync(
+        prediction.Latitude,
+        prediction.Longitude,
+        heading: 0
+    );
+
+    streetViewWindow.Activate();
+}
+```
+
+#### Offline 3D Street View Cache
+
+For offline usage, pre-download street view tiles for specific regions:
+
+```csharp
+// Services/StreetViewCacheBuilder.cs
+public class StreetViewCacheBuilder
+{
+    public async Task DownloadRegionAsync(
+        double centerLat,
+        double centerLon,
+        double radiusKm,
+        IProgress<int>? progress = null)
+    {
+        // Calculate grid of points to download
+        var points = GenerateGridPoints(centerLat, centerLon, radiusKm, spacing: 0.05);
+
+        var downloaded = 0;
+        var provider = new StreetView3DProvider();
+
+        foreach (var (lat, lon) in points)
+        {
+            // Download street view for each point (4 cardinal directions)
+            for (int heading = 0; heading < 360; heading += 90)
+            {
+                var data = await provider.Get3DStreetViewAsync(lat, lon, heading);
+                if (data != null)
+                {
+                    // Image is already cached by provider
+                }
+            }
+
+            downloaded++;
+            progress?.Report((int)((double)downloaded / points.Count * 100));
+        }
+    }
+
+    private List<(double lat, double lon)> GenerateGridPoints(
+        double centerLat,
+        double centerLon,
+        double radiusKm,
+        double spacing)
+    {
+        var points = new List<(double, double)>();
+        double degreeSpacing = spacing / 111.32; // Approximate km to degrees
+
+        for (double lat = centerLat - radiusKm / 111.32;
+             lat <= centerLat + radiusKm / 111.32;
+             lat += degreeSpacing)
+        {
+            for (double lon = centerLon - radiusKm / 111.32;
+                 lon <= centerLon + radiusKm / 111.32;
+                 lon += degreeSpacing)
+            {
+                // Check if within radius
+                var distance = CalculateDistance(centerLat, centerLon, lat, lon);
+                if (distance <= radiusKm)
+                {
+                    points.Add((lat, lon));
+                }
+            }
+        }
+
+        return points;
+    }
+
+    private double CalculateDistance(double lat1, double lon1, double lat2, double lon2)
+    {
+        const double R = 6371;
+        var dLat = (lat2 - lat1) * Math.PI / 180;
+        var dLon = (lon2 - lon1) * Math.PI / 180;
+
+        var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
+                Math.Cos(lat1 * Math.PI / 180) * Math.Cos(lat2 * Math.PI / 180) *
+                Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
+
+        var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+        return R * c;
+    }
 }
 ```
 
