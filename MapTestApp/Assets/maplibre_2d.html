@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>MapLibre GL 2D</title>
+    <script src='https://unpkg.com/maplibre-gl@4.0.0/dist/maplibre-gl.js'></script>
+    <link href='https://unpkg.com/maplibre-gl@4.0.0/dist/maplibre-gl.css' rel='stylesheet' />
+    <style>
+        body { margin: 0; padding: 0; }
+        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+    </style>
+</head>
+<body>
+    <div id='map'></div>
+    <script>
+        // Using OSM Liberty style (free, no API key)
+        const map = new maplibregl.Map({
+            container: 'map',
+            style: 'https://tiles.openfreemap.org/styles/liberty',
+            center: [0, 20],
+            zoom: 1.5,
+            pitch: 0
+        });
+
+        map.on('load', () => {
+            // Apply dark theme manually since OSM Liberty is light
+            map.setPaintProperty('background', 'background-color', '#0a0a0a');
+        });
+
+        const markers = [];
+
+        function getColor(confidence) {
+            if (confidence >= 0.85) return '#00ff88';
+            if (confidence >= 0.50) return '#ffdd00';
+            return '#ff6666';
+        }
+
+        window.mapAPI = {
+            addPin: function(lat, lon, label, confidence, rank, isExif) {
+                const color = isExif ? '#00ffff' : getColor(confidence);
+
+                const marker = new maplibregl.Marker({ color: color })
+                    .setLngLat([lon, lat])
+                    .setPopup(new maplibregl.Popup().setHTML(
+                        `<h3>${isExif ? '📍 EXIF GPS' : `#${rank} ${label}`}</h3>
+                         <p>${(confidence * 100).toFixed(1)}% confidence</p>`
+                    ))
+                    .addTo(map);
+
+                markers.push(marker);
+            },
+            flyTo: function(lat, lon, zoom, duration) {
+                map.flyTo({
+                    center: [lon, lat],
+                    zoom: zoom || 5,
+                    duration: duration || 2000
+                });
+            }
+        };
+
+        console.log('MapLibre GL 2D initialized');
+    </script>
+</body>
+</html>

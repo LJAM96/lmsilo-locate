@@ -1,0 +1,145 @@
+<Window
+    x:Class="MapTestApp.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Padding="24,16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+            <TextBlock Text="GeoLens Map Comparison Tool"
+                       FontSize="24"
+                       FontWeight="SemiBold"/>
+            <TextBlock Text="Compare different map implementations to choose the best for your needs"
+                       FontSize="12"
+                       Opacity="0.7"
+                       Margin="0,4,0,0"/>
+        </StackPanel>
+
+        <!-- Map Tabs -->
+        <TabView x:Name="MapTabView"
+                 Grid.Row="1"
+                 SelectionChanged="TabView_SelectionChanged"
+                 Margin="16">
+
+            <!-- Option 1: Globe.GL + NASA -->
+            <TabView.TabItems>
+                <TabViewItem Header="Globe.GL + NASA (51MB)" Tag="globe_nasa">
+                    <Grid>
+                        <WebView2 x:Name="GlobeNasaWebView" DefaultBackgroundColor="Black"/>
+                        <StackPanel VerticalAlignment="Top" HorizontalAlignment="Right"
+                                    Padding="16" Spacing="4" MaxWidth="350">
+                            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1" CornerRadius="8" Padding="12">
+                                <StackPanel Spacing="8">
+                                    <TextBlock Text="Globe.GL + NASA Texture" FontWeight="SemiBold"/>
+                                    <TextBlock Text="• 3D globe with NASA Black Marble" FontSize="12" TextWrapping="Wrap"/>
+                                    <TextBlock Text="• Bundle size: ~51MB" FontSize="12" TextWrapping="Wrap"/>
+                                    <TextBlock Text="• No labels or street names" FontSize="12" TextWrapping="Wrap" Foreground="Orange"/>
+                                    <TextBlock Text="• Satellite imagery only" FontSize="12" TextWrapping="Wrap"/>
+                                    <TextBlock Text="• Quick to implement (1 hour)" FontSize="12" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+                </TabViewItem>
+
+                <!-- Option 2: Leaflet + CartoDB Dark -->
+                <TabViewItem Header="Leaflet 2D (500MB)" Tag="leaflet">
+                    <Grid>
+                        <WebView2 x:Name="LeafletWebView" DefaultBackgroundColor="Black"/>
+                        <StackPanel VerticalAlignment="Top" HorizontalAlignment="Right"
+                                    Padding="16" Spacing="4" MaxWidth="350">
+                            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1" CornerRadius="8" Padding="12">
+                                <StackPanel Spacing="8">
+                                    <TextBlock Text="Leaflet + CartoDB Dark" FontWeight="SemiBold"/>
+                                    <TextBlock Text="• Traditional 2D street map" FontSize="12" TextWrapping="Wrap"/>
+                                    <TextBlock Text="• Bundle size: ~500MB (zoom 0-8)" FontSize="12" TextWrapping="Wrap"/>
+                                    <TextBlock Text="• City/country labels included" FontSize="12" TextWrapping="Wrap" Foreground="LightGreen"/>
+                                    <TextBlock Text="• Roads and streets visible" FontSize="12" TextWrapping="Wrap" Foreground="LightGreen"/>
+                                    <TextBlock Text="• Recommended for most users" FontSize="12" FontWeight="SemiBold" Foreground="Gold" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+                </TabViewItem>
+
+                <!-- Option 3: MapLibre 2D -->
+                <TabViewItem Header="MapLibre 2D (Vector)" Tag="maplibre_2d">
+                    <Grid>
+                        <WebView2 x:Name="MapLibre2DWebView" DefaultBackgroundColor="Black"/>
+                        <StackPanel VerticalAlignment="Top" HorizontalAlignment="Right"
+                                    Padding="16" Spacing="4" MaxWidth="350">
+                            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1" CornerRadius="8" Padding="12">
+                                <StackPanel Spacing="8">
+                                    <TextBlock Text="MapLibre GL 2D" FontWeight="SemiBold"/>
+                                    <TextBlock Text="• Vector tiles (infinite zoom)" FontSize="12" TextWrapping="Wrap"/>
+                                    <TextBlock Text="• Bundle size: 500MB-10GB (region dependent)" FontSize="12" TextWrapping="Wrap"/>
+                                    <TextBlock Text="• Best quality at all zoom levels" FontSize="12" TextWrapping="Wrap" Foreground="LightGreen"/>
+                                    <TextBlock Text="• All labels and features" FontSize="12" TextWrapping="Wrap" Foreground="LightGreen"/>
+                                    <TextBlock Text="• More complex setup" FontSize="12" TextWrapping="Wrap" Foreground="Orange"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+                </TabViewItem>
+
+                <!-- Option 4: MapLibre 3D Globe -->
+                <TabViewItem Header="MapLibre 3D Globe" Tag="maplibre_3d">
+                    <Grid>
+                        <WebView2 x:Name="MapLibre3DWebView" DefaultBackgroundColor="Black"/>
+                        <StackPanel VerticalAlignment="Top" HorizontalAlignment="Right"
+                                    Padding="16" Spacing="4" MaxWidth="350">
+                            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1" CornerRadius="8" Padding="12">
+                                <StackPanel Spacing="8">
+                                    <TextBlock Text="MapLibre GL 3D Globe" FontWeight="SemiBold"/>
+                                    <TextBlock Text="• 3D globe with vector tiles" FontSize="12" TextWrapping="Wrap"/>
+                                    <TextBlock Text="• Bundle size: Same as 2D" FontSize="12" TextWrapping="Wrap"/>
+                                    <TextBlock Text="• Streets on sphere" FontSize="12" TextWrapping="Wrap" Foreground="LightGreen"/>
+                                    <TextBlock Text="• Best of both worlds" FontSize="12" TextWrapping="Wrap" Foreground="Gold"/>
+                                    <TextBlock Text="• Can toggle 2D/3D" FontSize="12" TextWrapping="Wrap" Foreground="LightGreen"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+                </TabViewItem>
+
+                <!-- Option 5: Cesium -->
+                <TabViewItem Header="Cesium 3D (150MB)" Tag="cesium">
+                    <Grid>
+                        <WebView2 x:Name="CesiumWebView" DefaultBackgroundColor="Black"/>
+                        <StackPanel VerticalAlignment="Top" HorizontalAlignment="Right"
+                                    Padding="16" Spacing="4" MaxWidth="350">
+                            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1" CornerRadius="8" Padding="12">
+                                <StackPanel Spacing="8">
+                                    <TextBlock Text="Cesium.js + NASA" FontWeight="SemiBold"/>
+                                    <TextBlock Text="• True 3D globe with terrain" FontSize="12" TextWrapping="Wrap"/>
+                                    <TextBlock Text="• Bundle size: ~150MB" FontSize="12" TextWrapping="Wrap"/>
+                                    <TextBlock Text="• NASA professional imagery" FontSize="12" TextWrapping="Wrap" Foreground="LightGreen"/>
+                                    <TextBlock Text="• Can overlay street labels" FontSize="12" TextWrapping="Wrap"/>
+                                    <TextBlock Text="• Used by NASA/NOAA" FontSize="12" TextWrapping="Wrap" Foreground="Gold"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+                </TabViewItem>
+            </TabView.TabItems>
+        </TabView>
+    </Grid>
+</Window>
