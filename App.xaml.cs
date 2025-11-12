@@ -25,6 +25,34 @@ namespace GeoLens
         public App()
         {
             InitializeComponent();
+
+            // Register for application exit to dispose services
+            this.UnhandledException += App_UnhandledException;
+            AppDomain.CurrentDomain.ProcessExit += CurrentDomain_ProcessExit;
+        }
+
+        private void App_UnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
+        {
+            DisposeServices();
+        }
+
+        private void CurrentDomain_ProcessExit(object? sender, EventArgs e)
+        {
+            DisposeServices();
+        }
+
+        private void DisposeServices()
+        {
+            try
+            {
+                ApiClient?.Dispose();
+                PythonManager?.Dispose();
+                Debug.WriteLine("[App] Services disposed successfully");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[App] Error disposing services: {ex.Message}");
+            }
         }
 
         protected override async void OnLaunched(LaunchActivatedEventArgs args)
@@ -170,7 +198,7 @@ namespace GeoLens
                 // Start with progress updates
                 var progressReporter = new Progress<int>(percentage =>
                 {
-                    _loadingPage?.UpdateProgress(15 + (percentage * 0.75)); // Map 0-100 to 15-90
+                    _loadingPage?.UpdateProgress((int)(15 + (percentage * 0.75))); // Map 0-100 to 15-90
                     if (percentage < 30)
                         _loadingPage?.UpdateSubStatus("Launching Python process...");
                     else if (percentage < 70)
