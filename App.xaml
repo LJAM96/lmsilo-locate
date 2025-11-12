@@ -17,55 +17,38 @@
             <!-- GeoLens Fluent Design Theme Resources -->
 
             <!-- Confidence Level Colors -->
-            <Color x:Key="ConfidenceVeryHighColor">#00FFFF</Color> <!-- Cyan for EXIF GPS -->
-            <Color x:Key="ConfidenceHighColor">#00DD66</Color> <!-- Green -->
-            <Color x:Key="ConfidenceMediumColor">#FFDD00</Color> <!-- Yellow -->
-            <Color x:Key="ConfidenceLowColor">#FF6666</Color> <!-- Red -->
-
-            <SolidColorBrush x:Key="ConfidenceVeryHighBrush" Color="{StaticResource ConfidenceVeryHighColor}" />
-            <SolidColorBrush x:Key="ConfidenceHighBrush" Color="{StaticResource ConfidenceHighColor}" />
-            <SolidColorBrush x:Key="ConfidenceMediumBrush" Color="{StaticResource ConfidenceMediumColor}" />
-            <SolidColorBrush x:Key="ConfidenceLowBrush" Color="{StaticResource ConfidenceLowColor}" />
+            <SolidColorBrush x:Key="ConfidenceVeryHighBrush" Color="#00FFFF" /> <!-- Cyan for EXIF GPS -->
+            <SolidColorBrush x:Key="ConfidenceHighBrush" Color="#00DD66" /> <!-- Green -->
+            <SolidColorBrush x:Key="ConfidenceMediumBrush" Color="#FFDD00" /> <!-- Yellow -->
+            <SolidColorBrush x:Key="ConfidenceLowBrush" Color="#FF6666" /> <!-- Red -->
 
             <!-- Status Colors -->
-            <Color x:Key="StatusQueuedColor">#808080</Color> <!-- Gray -->
-            <Color x:Key="StatusProcessingColor">#0078D4</Color> <!-- Blue -->
-            <Color x:Key="StatusDoneColor">#00DD66</Color> <!-- Green -->
-            <Color x:Key="StatusErrorColor">#FF6666</Color> <!-- Red -->
-            <Color x:Key="StatusCachedColor">#00FFFF</Color> <!-- Cyan -->
-
-            <SolidColorBrush x:Key="StatusQueuedBrush" Color="{StaticResource StatusQueuedColor}" />
-            <SolidColorBrush x:Key="StatusProcessingBrush" Color="{StaticResource StatusProcessingColor}" />
-            <SolidColorBrush x:Key="StatusDoneBrush" Color="{StaticResource StatusDoneColor}" />
-            <SolidColorBrush x:Key="StatusErrorBrush" Color="{StaticResource StatusErrorColor}" />
-            <SolidColorBrush x:Key="StatusCachedBrush" Color="{StaticResource StatusCachedColor}" />
+            <SolidColorBrush x:Key="StatusQueuedBrush" Color="#808080" /> <!-- Gray -->
+            <SolidColorBrush x:Key="StatusProcessingBrush" Color="#0078D4" /> <!-- Blue -->
+            <SolidColorBrush x:Key="StatusDoneBrush" Color="#00DD66" /> <!-- Green -->
+            <SolidColorBrush x:Key="StatusErrorBrush" Color="#FF6666" /> <!-- Red -->
+            <SolidColorBrush x:Key="StatusCachedBrush" Color="#00FFFF" /> <!-- Cyan -->
 
             <!-- Accent Colors -->
-            <Color x:Key="SystemAccentColor">#0078D4</Color>
-            <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource SystemAccentColor}" />
+            <SolidColorBrush x:Key="AccentBrush" Color="#0078D4" />
 
             <!-- Background Colors for Dark Theme -->
-            <Color x:Key="AppBackgroundColor">#0A0A0A</Color>
-            <Color x:Key="PanelBackgroundColor">#1A1A1A</Color>
-            <Color x:Key="CardBackgroundColor">#1E1E1E</Color>
-            <Color x:Key="ElevatedBackgroundColor">#252525</Color>
-
-            <SolidColorBrush x:Key="AppBackgroundBrush" Color="{StaticResource AppBackgroundColor}" />
-            <SolidColorBrush x:Key="PanelBackgroundBrush" Color="{StaticResource PanelBackgroundColor}" />
-            <SolidColorBrush x:Key="CardBackgroundBrush" Color="{StaticResource CardBackgroundColor}" />
+            <SolidColorBrush x:Key="AppBackgroundBrush" Color="#0A0A0A" />
+            <SolidColorBrush x:Key="PanelBackgroundBrush" Color="#1A1A1A" />
+            <SolidColorBrush x:Key="CardBackgroundBrush" Color="#1E1E1E" />
 
             <!-- Acrylic Brushes -->
             <AcrylicBrush x:Key="LeftPanelAcrylicBrush"
                          TintColor="#1A1A1A"
                          TintOpacity="0.8"
                          TintLuminosityOpacity="0.8"
-                         Fallback="#1E1E1E" />
+                         FallbackColor="#1E1E1E" />
 
             <AcrylicBrush x:Key="RightPanelAcrylicBrush"
                          TintColor="#1A1A1A"
                          TintOpacity="0.7"
                          TintLuminosityOpacity="0.9"
-                         Fallback="#1E1E1E" />
+                         FallbackColor="#1E1E1E" />
 
             <!-- Corner Radius -->
             <CornerRadius x:Key="ControlCornerRadius">8</CornerRadius>

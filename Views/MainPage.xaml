@@ -64,7 +64,7 @@
                 <AcrylicBrush TintColor="#1A1A1A"
                              TintOpacity="0.8"
                              TintLuminosityOpacity="0.8"
-                             Fallback="#1E1E1E"/>
+                             FallbackColor="#1E1E1E"/>
             </Grid.Background>
 
             <Grid.RowDefinitions>
@@ -298,8 +298,7 @@
                 <Border Background="#0F0F0F"
                        CornerRadius="12"
                        BorderBrush="#2F2F2F"
-                       BorderThickness="1"
-                       ClipToBounds="True">
+                       BorderThickness="1">
                     <Grid>
                         <WebView2 x:Name="GlobeWebView"
                                  DefaultBackgroundColor="Black"/>
@@ -377,7 +376,7 @@
                 <AcrylicBrush TintColor="#1A1A1A"
                              TintOpacity="0.7"
                              TintLuminosityOpacity="0.9"
-                             Fallback="#1E1E1E"/>
+                             FallbackColor="#1E1E1E"/>
             </Grid.Background>
 
             <ScrollViewer Padding="16">
