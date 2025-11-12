@@ -23,9 +23,35 @@
 
     // Initialize app
     function init() {
+        console.log('App initializing...');
+        showDebugInfo();
         setupEventListeners();
         initAllMaps();
         checkBackendStatus();
+    }
+
+    // Show debug info
+    function showDebugInfo() {
+        const debugPanel = document.getElementById('debugPanel');
+        const debugContent = document.getElementById('debugContent');
+
+        const checks = [
+            { name: 'Leaflet', check: typeof L !== 'undefined' },
+            { name: 'Globe.GL', check: typeof Globe !== 'undefined' },
+            { name: 'MapLibre', check: typeof maplibregl !== 'undefined' },
+            { name: 'Cesium', check: typeof Cesium !== 'undefined' },
+            { name: 'Three.js', check: typeof THREE !== 'undefined' }
+        ];
+
+        const html = checks.map(item => {
+            const status = item.check ? '✅' : '❌';
+            return `<div>${status} ${item.name}</div>`;
+        }).join('');
+
+        debugContent.innerHTML = html;
+        debugPanel.style.display = 'block';
+
+        console.log('Library status:', checks);
     }
 
     // Setup all event listeners
@@ -60,11 +86,16 @@
 
     // Initialize all maps
     function initAllMaps() {
-        initGlobeGL();
-        initLeaflet();
-        initMapLibre2D();
-        initMapLibre3D();
-        initCesium();
+        console.log('Starting map initialization...');
+
+        // Wait for all libraries to load
+        setTimeout(() => {
+            initGlobeGL();
+            initLeaflet();
+            initMapLibre2D();
+            initMapLibre3D();
+            initCesium();
+        }, 500);
     }
 
     // Initialize Globe.GL
@@ -74,8 +105,11 @@
         try {
             if (typeof Globe === 'undefined') {
                 console.error('Globe.gl library not loaded');
+                showMapError(container, 'Globe.GL library not loaded. Check internet connection.');
                 return;
             }
+
+            console.log('Initializing Globe.GL...');
 
             state.maps.globegl = Globe()
                 (container)
@@ -97,10 +131,27 @@
             state.maps.globegl.controls().autoRotate = true;
             state.maps.globegl.controls().autoRotateSpeed = 0.5;
 
-            console.log('Globe.GL initialized');
+            console.log('Globe.GL initialized successfully');
         } catch (error) {
             console.error('Failed to initialize Globe.GL:', error);
+            showMapError(container, 'Failed to initialize Globe.GL: ' + error.message);
         }
+    }
+
+    // Show error message in map container
+    function showMapError(container, message) {
+        if (!container) return;
+        container.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: #ff4444; flex-direction: column; gap: 1rem; padding: 2rem; text-align: center;">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+                <div style="font-size: 1.1rem; font-weight: bold;">Map Failed to Load</div>
+                <div style="color: #a0a0a0; max-width: 400px;">${message}</div>
+            </div>
+        `;
     }
 
     // Initialize Leaflet
@@ -108,6 +159,19 @@
         const container = document.getElementById('map-leaflet');
 
         try {
+            if (!container) {
+                console.error('Leaflet container not found');
+                return;
+            }
+
+            if (typeof L === 'undefined') {
+                console.error('Leaflet library not loaded');
+                showMapError(container, 'Leaflet library not loaded. Check internet connection.');
+                return;
+            }
+
+            console.log('Initializing Leaflet on container:', container);
+
             state.maps.leaflet = L.map(container, {
                 center: [20, 0],
                 zoom: 2,
@@ -122,9 +186,10 @@
                 maxZoom: 20
             }).addTo(state.maps.leaflet);
 
-            console.log('Leaflet initialized');
+            console.log('Leaflet initialized successfully');
         } catch (error) {
             console.error('Failed to initialize Leaflet:', error);
+            showMapError(container, 'Failed to initialize Leaflet: ' + error.message);
         }
     }
 
@@ -133,10 +198,17 @@
         const container = document.getElementById('map-maplibre-2d');
 
         try {
+            if (!container) {
+                console.error('MapLibre 2D container not found');
+                return;
+            }
+
             if (typeof maplibregl === 'undefined') {
                 console.error('MapLibre GL JS not loaded');
                 return;
             }
+
+            console.log('Initializing MapLibre 2D...');
 
             state.maps.maplibre2d = new maplibregl.Map({
                 container: container,
@@ -146,7 +218,7 @@
             });
 
             state.maps.maplibre2d.on('load', () => {
-                console.log('MapLibre 2D initialized');
+                console.log('MapLibre 2D initialized successfully');
             });
         } catch (error) {
             console.error('Failed to initialize MapLibre 2D:', error);
