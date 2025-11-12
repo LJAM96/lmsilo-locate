@@ -363,6 +363,8 @@ namespace GeoLens.Views
             picker.FileTypeFilter.Add(".png");
             picker.FileTypeFilter.Add(".bmp");
             picker.FileTypeFilter.Add(".gif");
+            picker.FileTypeFilter.Add(".heic");
+            picker.FileTypeFilter.Add(".webp");
 
             // Let user select multiple files
             var files = await picker.PickMultipleFilesAsync();
