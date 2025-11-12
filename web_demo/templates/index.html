@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GeoLens - Map Visualization Demo</title>
+
+    <!-- Leaflet CSS for 2D maps -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Globe.gl for 3D globe -->
+    <script src="https://unpkg.com/globe.gl@2.31.0/dist/globe.gl.min.js"></script>
+
+    <!-- Three.js (required for globe.gl) -->
+    <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>🌍 GeoLens Map Visualization Demo</h1>
+            <div class="status" id="backendStatus">
+                <span class="status-indicator" id="statusDot"></span>
+                <span id="statusText">Checking backend...</span>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Left Sidebar - Upload & Controls -->
+            <aside class="sidebar">
+                <div class="upload-section">
+                    <h2>Upload Image</h2>
+                    <div class="upload-zone" id="uploadZone">
+                        <input type="file" id="imageInput" accept="image/*" hidden>
+                        <div class="upload-prompt">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="17 8 12 3 7 8"></polyline>
+                                <line x1="12" y1="3" x2="12" y2="15"></line>
+                            </svg>
+                            <p>Click or drag image here</p>
+                            <small>PNG, JPG, GIF (max 16MB)</small>
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <label for="topK">Predictions to show:</label>
+                        <input type="number" id="topK" value="10" min="1" max="50">
+                    </div>
+
+                    <button class="btn btn-primary" id="analyzeBtn" disabled>Analyze Image</button>
+                    <button class="btn btn-secondary" id="demoBtn">Load Demo Data</button>
+                </div>
+
+                <!-- Image Preview -->
+                <div class="image-preview" id="imagePreview" style="display: none;">
+                    <h3>Uploaded Image</h3>
+                    <img id="previewImg" alt="Uploaded image">
+                </div>
+
+                <!-- Predictions List -->
+                <div class="predictions-list" id="predictionsList" style="display: none;">
+                    <h3>Predictions</h3>
+                    <div id="predictionsContainer"></div>
+                </div>
+            </aside>
+
+            <!-- Main Map Area -->
+            <main class="map-container">
+                <!-- View Toggle -->
+                <div class="view-toggle">
+                    <button class="toggle-btn active" data-view="2d">2D Map</button>
+                    <button class="toggle-btn" data-view="3d">3D Globe</button>
+                </div>
+
+                <!-- 2D Map -->
+                <div id="map2d" class="map-view active"></div>
+
+                <!-- 3D Globe -->
+                <div id="globe3d" class="map-view"></div>
+
+                <!-- Legend -->
+                <div class="legend">
+                    <h4>Confidence Levels</h4>
+                    <div class="legend-item">
+                        <span class="legend-color" style="background: #00ff88;"></span>
+                        <span>High (&gt;10%)</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-color" style="background: #ffcc00;"></span>
+                        <span>Medium (5-10%)</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-color" style="background: #ff4444;"></span>
+                        <span>Low (&lt;5%)</span>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay" style="display: none;">
+        <div class="spinner"></div>
+        <p>Analyzing image...</p>
+    </div>
+
+    <!-- Custom JavaScript -->
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+
+    {% if demo_predictions %}
+    <script>
+        // Load demo predictions on page load
+        window.addEventListener('DOMContentLoaded', function() {
+            const demoData = {{ demo_predictions | tojson }};
+            window.GeoLensApp.displayPredictions(demoData, null);
+        });
+    </script>
+    {% endif %}
+</body>
+</html>
