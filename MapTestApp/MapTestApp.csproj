@@ -11,7 +11,6 @@
     <LangVersion>latest</LangVersion>
     <AssemblyName>MapTestApp</AssemblyName>
     <RootNamespace>MapTestApp</RootNamespace>
-    <ApplicationIcon>icon.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

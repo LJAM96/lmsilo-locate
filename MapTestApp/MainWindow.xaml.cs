@@ -35,6 +35,9 @@ namespace MapTestApp
                 return;
 
             var tag = selectedTab.Tag?.ToString();
+            if (tag == null)
+                return;
+
             Debug.WriteLine($"[MainWindow] Switched to tab: {tag}");
 
             // Initialize the selected map
