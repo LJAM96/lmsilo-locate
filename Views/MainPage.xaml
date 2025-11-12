@@ -6,6 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:local="using:GeoLens.Models"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls"
     mc:Ignorable="d"
     Background="{StaticResource AppBackgroundBrush}">
 
@@ -292,76 +293,35 @@
                 </Button>
             </Grid>
 
-            <!-- Globe Placeholder -->
+            <!-- 3D Globe (WebView2) -->
             <Grid Grid.Row="1" Padding="24">
                 <Border Background="#0F0F0F"
                        CornerRadius="12"
                        BorderBrush="#2F2F2F"
-                       BorderThickness="1">
+                       BorderThickness="1"
+                       ClipToBounds="True">
                     <Grid>
-                        <!-- Dark space background -->
-                        <Ellipse Fill="#0A0A0A"
-                                Stroke="#2F2F2F"
-                                StrokeThickness="2"
-                                Width="400"
-                                Height="400"
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center"/>
+                        <WebView2 x:Name="GlobeWebView"
+                                 DefaultBackgroundColor="Black"/>
 
-                        <!-- Earth silhouette -->
-                        <Ellipse Width="380"
-                                Height="380"
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center">
-                            <Ellipse.Fill>
-                                <RadialGradientBrush>
-                                    <GradientStop Color="#1A3A4A" Offset="0"/>
-                                    <GradientStop Color="#0D1F2A" Offset="1"/>
-                                </RadialGradientBrush>
-                            </Ellipse.Fill>
-                        </Ellipse>
-
-                        <!-- Placeholder text -->
-                        <StackPanel HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"
-                                   Spacing="12">
-                            <FontIcon Glyph="&#xE774;"
-                                     FontSize="48"
-                                     Foreground="#40FFFFFF"/>
-                            <TextBlock Text="3D Globe View"
-                                      FontSize="20"
-                                      FontWeight="SemiBold"
-                                      Foreground="#80FFFFFF"
-                                      HorizontalAlignment="Center"/>
-                            <TextBlock Text="Predictions will appear as pins on the globe"
-                                      FontSize="12"
-                                      Foreground="#60FFFFFF"
-                                      HorizontalAlignment="Center"/>
-                        </StackPanel>
-
-                        <!-- Pin mock overlay -->
-                        <ItemsControl x:Name="GlobePins"
-                                     Width="380"
-                                     Height="380"
-                                     HorizontalAlignment="Center"
-                                     VerticalAlignment="Center">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <Canvas/>
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Ellipse Width="12"
-                                            Height="12"
-                                            Stroke="White"
-                                            StrokeThickness="2"
-                                            Fill="{Binding PinColor}"
-                                            Canvas.Left="{Binding X}"
-                                            Canvas.Top="{Binding Y}"/>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                        <!-- Loading Overlay -->
+                        <Grid x:Name="GlobeLoadingOverlay"
+                             Background="#0F0F0F"
+                             Visibility="Visible">
+                            <StackPanel HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       Spacing="16">
+                                <ProgressRing IsActive="True"
+                                             Width="48"
+                                             Height="48"/>
+                                <TextBlock Text="Loading 3D Globe..."
+                                          FontSize="16"
+                                          Foreground="#FFFFFF"/>
+                                <TextBlock Text="Initializing Three.js renderer"
+                                          FontSize="12"
+                                          Foreground="#80FFFFFF"/>
+                            </StackPanel>
+                        </Grid>
                     </Grid>
                 </Border>
             </Grid>

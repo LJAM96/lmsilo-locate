@@ -1,5 +1,6 @@
 using GeoLens.Models;
 using GeoLens.Services;
+using GeoLens.Services.MapProviders;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -20,6 +21,7 @@ namespace GeoLens.Views
         private bool _hasExifGps;
         private string _reliabilityMessage = "No image selected";
         private string _selectedCountText = "";
+        private IMapProvider? _mapProvider;
 
         // Observable Collections
         public ObservableCollection<ImageQueueItem> ImageQueue { get; } = new();
@@ -80,6 +82,61 @@ namespace GeoLens.Views
 
             // Wire up selection changed event
             ImageListView.SelectionChanged += ImageListView_SelectionChanged;
+
+            // Initialize globe when page loads
+            this.Loaded += MainPage_Loaded;
+        }
+
+        private async void MainPage_Loaded(object sender, RoutedEventArgs e)
+        {
+            await InitializeGlobeAsync();
+        }
+
+        private async Task InitializeGlobeAsync()
+        {
+            try
+            {
+                System.Diagnostics.Debug.WriteLine("[MainPage] Initializing globe...");
+
+                // Create provider (auto-detect online/offline)
+                _mapProvider = new WebView2GlobeProvider(GlobeWebView, offlineMode: false);
+
+                // Initialize
+                await _mapProvider.InitializeAsync();
+
+                // Hide loading overlay
+                GlobeLoadingOverlay.Visibility = Visibility.Collapsed;
+
+                System.Diagnostics.Debug.WriteLine("[MainPage] Globe ready");
+
+                // If we already have mock predictions, add them to the globe
+                if (Predictions.Count > 0)
+                {
+                    foreach (var pred in Predictions)
+                    {
+                        await _mapProvider.AddPinAsync(
+                            pred.Latitude,
+                            pred.Longitude,
+                            pred.LocationSummary,
+                            pred.Probability,
+                            pred.Rank,
+                            isExif: false
+                        );
+                    }
+
+                    // Rotate to first prediction
+                    var first = Predictions[0];
+                    await _mapProvider.RotateToLocationAsync(first.Latitude, first.Longitude, 1500);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MainPage] Globe initialization failed: {ex.Message}");
+
+                // Update loading overlay to show error
+                GlobeLoadingOverlay.Visibility = Visibility.Visible;
+                // TODO: Update overlay UI to show error message instead of loading
+            }
         }
 
         private void ImageListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -358,10 +415,16 @@ namespace GeoLens.Views
             }
         }
 
-        private void DisplayPredictions(Services.DTOs.PredictionResult result)
+        private async void DisplayPredictions(Services.DTOs.PredictionResult result)
         {
             // Clear existing predictions
             Predictions.Clear();
+
+            // Clear globe pins
+            if (_mapProvider != null && _mapProvider.IsReady)
+            {
+                await _mapProvider.ClearPinsAsync();
+            }
 
             if (result.Predictions != null)
             {
@@ -385,6 +448,26 @@ namespace GeoLens.Views
                     };
 
                     Predictions.Add(prediction);
+
+                    // Add pin to globe
+                    if (_mapProvider != null && _mapProvider.IsReady)
+                    {
+                        await _mapProvider.AddPinAsync(
+                            prediction.Latitude,
+                            prediction.Longitude,
+                            prediction.LocationSummary,
+                            prediction.Probability,
+                            prediction.Rank,
+                            isExif: false
+                        );
+                    }
+                }
+
+                // Rotate to first prediction
+                if (Predictions.Count > 0 && _mapProvider != null && _mapProvider.IsReady)
+                {
+                    var first = Predictions[0];
+                    await _mapProvider.RotateToLocationAsync(first.Latitude, first.Longitude, 1500);
                 }
 
                 ReliabilityMessage = $"Showing {Predictions.Count} predictions";
