@@ -19,7 +19,7 @@ from typing import Iterable, List, Optional, Sequence, Tuple
 import pandas as pd
 from transformers.utils import logging as hf_logging
 
-from llocale import (
+from .llocale import (
     GeoClipPredictor,
     InputRecord,
     PredictionOutcome,

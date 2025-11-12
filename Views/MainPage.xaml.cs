@@ -385,7 +385,9 @@ namespace GeoLens.Views
                 var response = await App.ApiClient.InferBatchAsync(imagePaths, topK: 5);
 
                 // Process results
-                foreach (var result in response.Results)
+                if (response != null)
+                {
+                    foreach (var result in response)
                 {
                     var imageItem = ImageQueue.FirstOrDefault(i => i.FilePath == result.Path);
                     if (imageItem != null)
@@ -398,6 +400,7 @@ namespace GeoLens.Views
                             DisplayPredictions(result);
                         }
                     }
+                }
                 }
 
                 ReliabilityMessage = $"Processed {queuedImages.Count} image(s)";
@@ -520,11 +523,6 @@ namespace GeoLens.Views
             OnPropertyChanged(nameof(QueueStatusMessage));
         }
 
-        private void OpenSettings_Click(object sender, RoutedEventArgs e)
-        {
-            App.ShowSettingsWindow();
-        }
-
         private void NavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
         {
             if (args.SelectedItem is NavigationViewItem item)
@@ -533,15 +531,16 @@ namespace GeoLens.Views
                 switch (tag)
                 {
                     case "main":
-                        // Show main content
+                        // Show main geolocation content
                         MainContentGrid.Visibility = Visibility.Visible;
+                        SettingsFrame.Visibility = Visibility.Collapsed;
                         break;
 
                     case "settings":
-                        // Navigate to settings
-                        App.ShowSettingsWindow();
-                        // Keep main selected
-                        NavView.SelectedItem = NavView.MenuItems[0];
+                        // Navigate to settings within the same window
+                        MainContentGrid.Visibility = Visibility.Collapsed;
+                        SettingsFrame.Visibility = Visibility.Visible;
+                        SettingsFrame.Navigate(typeof(SettingsPage));
                         break;
                 }
             }

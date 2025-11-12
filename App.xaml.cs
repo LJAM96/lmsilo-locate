@@ -19,7 +19,7 @@ namespace GeoLens
         // Services
         public static PythonRuntimeManager? PythonManager { get; private set; }
         public static GeoCLIPApiClient? ApiClient { get; private set; }
-        public static HardwareDetectionService.HardwareInfo? DetectedHardware { get; private set; }
+        public static HardwareInfo? DetectedHardware { get; private set; }
 
         public App()
         {
@@ -65,7 +65,8 @@ namespace GeoLens
             {
                 // 1. Detect hardware
                 Debug.WriteLine("[App] Detecting hardware...");
-                DetectedHardware = HardwareDetectionService.DetectHardware();
+                var hardwareService = new HardwareDetectionService();
+                DetectedHardware = hardwareService.DetectHardware();
                 Debug.WriteLine($"[App] Detected: {DetectedHardware.Description}");
 
                 // 2. Determine runtime path
@@ -75,16 +76,41 @@ namespace GeoLens
                 // For development: use local Python
                 if (Debugger.IsAttached)
                 {
-                    Debug.WriteLine("[App] Development mode - using local Python");
-                    runtimePath = "python"; // Use system Python
+                    Debug.WriteLine("[App] Development mode - checking for conda environment");
+
+                    // Check for CONDA_PREFIX environment variable (set when conda env is active)
+                    var condaPrefix = Environment.GetEnvironmentVariable("CONDA_PREFIX");
+                    if (!string.IsNullOrEmpty(condaPrefix))
+                    {
+                        runtimePath = Path.Combine(condaPrefix, "python.exe");
+                        Debug.WriteLine($"[App] Using conda environment: {runtimePath}");
+                    }
+                    else
+                    {
+                        // Try to find geolens conda environment
+                        var condaRoot = Environment.GetEnvironmentVariable("CONDA_ROOT")
+                                     ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "miniconda3");
+                        var geolensEnvPath = Path.Combine(condaRoot, "envs", "geolens", "python.exe");
+
+                        if (File.Exists(geolensEnvPath))
+                        {
+                            runtimePath = geolensEnvPath;
+                            Debug.WriteLine($"[App] Found geolens conda environment: {runtimePath}");
+                        }
+                        else
+                        {
+                            runtimePath = "python"; // Fallback to system Python
+                            Debug.WriteLine("[App] Using system Python (conda env not found)");
+                        }
+                    }
                 }
                 else
                 {
                     // For production: use embedded runtime
                     string runtimeFolder = DetectedHardware.Type switch
                     {
-                        HardwareDetectionService.HardwareType.NvidiaGpu => "python_cuda",
-                        HardwareDetectionService.HardwareType.AmdGpu => "python_rocm",
+                        HardwareType.NvidiaGpu => "python_cuda",
+                        HardwareType.AmdGpu => "python_rocm",
                         _ => "python_cpu"
                     };
 
@@ -98,18 +124,14 @@ namespace GeoLens
                     }
                 }
 
-                // 3. Start Python service
+                // 3. Start Python service (includes health check)
                 Debug.WriteLine($"[App] Starting Python service with runtime: {runtimePath}");
                 PythonManager = new PythonRuntimeManager(runtimePath, port: 8899);
-                await PythonManager.StartAsync(DetectedHardware.DeviceChoice);
+                bool serviceStarted = await PythonManager.StartAsync(DetectedHardware.DeviceChoice);
 
-                // 4. Wait for health check
-                Debug.WriteLine("[App] Waiting for service health check...");
-                bool healthy = await PythonManager.WaitForHealthyAsync(timeoutSeconds: 30);
-
-                if (!healthy)
+                if (!serviceStarted)
                 {
-                    Debug.WriteLine("[App] ERROR: Service health check failed");
+                    Debug.WriteLine("[App] ERROR: Service failed to start or health check failed");
                     return false;
                 }
 
@@ -129,6 +151,16 @@ namespace GeoLens
 
         private async Task ShowServiceErrorDialog()
         {
+            // Ensure window has a XamlRoot by waiting a moment for rendering
+            await Task.Delay(100);
+
+            // Check if XamlRoot is available
+            if (_mainWindow?.Content?.XamlRoot == null)
+            {
+                Debug.WriteLine("[App] Cannot show error dialog - XamlRoot not available");
+                return;
+            }
+
             var dialog = new ContentDialog
             {
                 Title = "Startup Error",
@@ -138,7 +170,7 @@ namespace GeoLens
                           "• Port 8899 is not in use\n\n" +
                           "Check the debug output for details.",
                 CloseButtonText = "Exit",
-                XamlRoot = _mainWindow?.Content?.XamlRoot
+                XamlRoot = _mainWindow.Content.XamlRoot
             };
 
             await dialog.ShowAsync();

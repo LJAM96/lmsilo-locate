@@ -12,7 +12,7 @@ from typing import List, Literal, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from llocale import (
+from .llocale import (
     GeoClipPredictor,
     InputRecord,
     LocationPrediction,

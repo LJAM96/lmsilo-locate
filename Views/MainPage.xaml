@@ -50,8 +50,10 @@
         </NavigationView.MenuItems>
 
         <NavigationView.Content>
-            <!-- Main Content Frame -->
-            <Grid x:Name="MainContentGrid">
+            <!-- Navigation Container -->
+            <Grid>
+                <!-- Main Geolocation Content -->
+                <Grid x:Name="MainContentGrid" Visibility="Visible">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="320"/> <!-- Left Panel: Image Queue -->
                     <ColumnDefinition Width="*"/> <!-- Center Panel: Globe/Map -->
@@ -284,13 +286,6 @@
                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                               Margin="0,4,0,0"/>
                 </StackPanel>
-
-                <Button Grid.Column="1"
-                       Style="{StaticResource IconButtonStyle}"
-                       ToolTipService.ToolTip="Settings"
-                       Click="OpenSettings_Click">
-                    <FontIcon Glyph="&#xE713;" FontSize="16"/>
-                </Button>
             </Grid>
 
             <!-- 3D Globe (WebView2) -->
@@ -633,6 +628,10 @@
                 </StackPanel>
             </ScrollViewer>
         </Grid>
+                </Grid>
+
+                <!-- Settings Frame -->
+                <Frame x:Name="SettingsFrame" Visibility="Collapsed"/>
             </Grid>
         </NavigationView.Content>
     </NavigationView>

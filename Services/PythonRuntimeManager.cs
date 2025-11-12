@@ -29,11 +29,29 @@ namespace GeoLens.Services
             _healthCheckClient = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
 
             // Determine api_service.py path
+            // In development: search upward from bin directory to find project root
+            // In production: Core will be in a known location relative to executable
             var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            _apiServiceScript = Path.Combine(baseDir, "..", "..", "..", "..", "Core", "api_service.py");
+            var searchDir = new DirectoryInfo(baseDir);
 
-            // Normalize path
-            _apiServiceScript = Path.GetFullPath(_apiServiceScript);
+            // Search up to 6 levels for the Core directory
+            for (int i = 0; i < 6 && searchDir != null; i++)
+            {
+                var corePath = Path.Combine(searchDir.FullName, "Core", "api_service.py");
+                if (File.Exists(corePath))
+                {
+                    _apiServiceScript = corePath;
+                    break;
+                }
+                searchDir = searchDir.Parent;
+            }
+
+            // Fallback: assume Core is at same level as bin (production)
+            if (string.IsNullOrEmpty(_apiServiceScript))
+            {
+                _apiServiceScript = Path.Combine(baseDir, "..", "Core", "api_service.py");
+                _apiServiceScript = Path.GetFullPath(_apiServiceScript);
+            }
         }
 
         /// <summary>
@@ -63,6 +81,10 @@ namespace GeoLens.Services
 
             try
             {
+                // Working directory must be the parent of Core directory for proper module import
+                var coreDir = Path.GetDirectoryName(_apiServiceScript) ?? string.Empty;
+                var projectRoot = Path.GetDirectoryName(coreDir) ?? string.Empty;
+
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = _pythonExecutable,
@@ -71,7 +93,7 @@ namespace GeoLens.Services
                     CreateNoWindow = true,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
-                    WorkingDirectory = Path.GetDirectoryName(_apiServiceScript) ?? string.Empty
+                    WorkingDirectory = projectRoot
                 };
 
                 // Set environment variable for device if needed
