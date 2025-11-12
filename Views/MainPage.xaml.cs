@@ -83,23 +83,23 @@ namespace GeoLens.Views
             // Wire up selection changed event
             ImageListView.SelectionChanged += ImageListView_SelectionChanged;
 
-            // Initialize globe when page loads
+            // Initialize map when page loads
             this.Loaded += MainPage_Loaded;
         }
 
         private async void MainPage_Loaded(object sender, RoutedEventArgs e)
         {
-            await InitializeGlobeAsync();
+            await InitializeMapAsync();
         }
 
-        private async Task InitializeGlobeAsync()
+        private async Task InitializeMapAsync()
         {
             try
             {
-                System.Diagnostics.Debug.WriteLine("[MainPage] Initializing globe...");
+                System.Diagnostics.Debug.WriteLine("[MainPage] Initializing map...");
 
-                // Create provider (auto-detect online/offline)
-                _mapProvider = new WebView2GlobeProvider(GlobeWebView, offlineMode: false);
+                // Create Leaflet map provider (online mode with dark tiles)
+                _mapProvider = new LeafletMapProvider(GlobeWebView, offlineMode: false);
 
                 // Initialize
                 await _mapProvider.InitializeAsync();
@@ -107,9 +107,9 @@ namespace GeoLens.Views
                 // Hide loading overlay
                 GlobeLoadingOverlay.Visibility = Visibility.Collapsed;
 
-                System.Diagnostics.Debug.WriteLine("[MainPage] Globe ready");
+                System.Diagnostics.Debug.WriteLine("[MainPage] Map ready");
 
-                // If we already have mock predictions, add them to the globe
+                // If we already have mock predictions, add them to the map
                 if (Predictions.Count > 0)
                 {
                     foreach (var pred in Predictions)
@@ -131,7 +131,7 @@ namespace GeoLens.Views
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[MainPage] Globe initialization failed: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[MainPage] Map initialization failed: {ex.Message}");
 
                 // Update loading overlay to show error
                 GlobeLoadingOverlay.Visibility = Visibility.Visible;
@@ -423,7 +423,7 @@ namespace GeoLens.Views
             // Clear existing predictions
             Predictions.Clear();
 
-            // Clear globe pins
+            // Clear map markers
             if (_mapProvider != null && _mapProvider.IsReady)
             {
                 await _mapProvider.ClearPinsAsync();
@@ -452,7 +452,7 @@ namespace GeoLens.Views
 
                     Predictions.Add(prediction);
 
-                    // Add pin to globe
+                    // Add marker to map
                     if (_mapProvider != null && _mapProvider.IsReady)
                     {
                         await _mapProvider.AddPinAsync(
