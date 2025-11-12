@@ -21,10 +21,45 @@ namespace GeoLens
         public static PythonRuntimeManager? PythonManager { get; private set; }
         public static GeoCLIPApiClient? ApiClient { get; private set; }
         public static HardwareInfo? DetectedHardware { get; private set; }
+        public static UserSettingsService SettingsService { get; private set; } = null!;
+        public static PredictionCacheService CacheService { get; private set; } = null!;
 
         public App()
         {
             InitializeComponent();
+
+            // Initialize services
+            SettingsService = new UserSettingsService();
+            CacheService = new PredictionCacheService();
+
+            // Register for application exit to dispose services
+            this.UnhandledException += App_UnhandledException;
+            AppDomain.CurrentDomain.ProcessExit += CurrentDomain_ProcessExit;
+        }
+
+        private void App_UnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
+        {
+            DisposeServices();
+        }
+
+        private void CurrentDomain_ProcessExit(object? sender, EventArgs e)
+        {
+            DisposeServices();
+        }
+
+        private void DisposeServices()
+        {
+            try
+            {
+                ApiClient?.Dispose();
+                PythonManager?.Dispose();
+                CacheService?.Dispose();
+                Debug.WriteLine("[App] Services disposed successfully");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[App] Error disposing services: {ex.Message}");
+            }
         }
 
         protected override async void OnLaunched(LaunchActivatedEventArgs args)
@@ -83,6 +118,13 @@ namespace GeoLens
         {
             try
             {
+                // Stage 0: Load settings (2% progress)
+                _loadingPage?.UpdateStatus("Loading settings...");
+                _loadingPage?.UpdateProgress(2);
+                await SettingsService.LoadSettingsAsync();
+                await CacheService.InitializeAsync();
+                Debug.WriteLine("[App] Settings and cache initialized");
+
                 // Stage 1: Detect hardware (5% progress)
                 _loadingPage?.UpdateStatus("Detecting hardware...");
                 _loadingPage?.UpdateProgress(5);
@@ -92,6 +134,12 @@ namespace GeoLens
                 var hardwareService = new HardwareDetectionService();
                 DetectedHardware = hardwareService.DetectHardware();
                 Debug.WriteLine($"[App] Detected: {DetectedHardware.Description}");
+
+                // Update hardware info in settings
+                SettingsService.UpdateHardwareInfo(
+                    DetectedHardware.Description,
+                    DetectedHardware.Type.ToString()
+                );
 
                 _loadingPage?.UpdateSubStatus(DetectedHardware.Description);
                 await Task.Delay(100);
@@ -170,7 +218,7 @@ namespace GeoLens
                 // Start with progress updates
                 var progressReporter = new Progress<int>(percentage =>
                 {
-                    _loadingPage?.UpdateProgress(15 + (percentage * 0.75)); // Map 0-100 to 15-90
+                    _loadingPage?.UpdateProgress((int)(15 + (percentage * 0.75))); // Map 0-100 to 15-90
                     if (percentage < 30)
                         _loadingPage?.UpdateSubStatus("Launching Python process...");
                     else if (percentage < 70)

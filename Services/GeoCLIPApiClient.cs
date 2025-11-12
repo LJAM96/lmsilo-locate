@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -86,7 +87,7 @@ namespace GeoLens.Services
                     Items = validPaths.Select(path => new InferenceItem
                     {
                         Path = path,
-                        Md5 = null // Could compute MD5 hash here for caching
+                        Md5 = ComputeMd5Hash(path)
                     }).ToList(),
                     TopK = topK,
                     Device = device.ToLowerInvariant(),
@@ -128,6 +129,9 @@ namespace GeoLens.Services
 
         /// <summary>
         /// Infer location with progress reporting
+        /// NOTE: This processes images sequentially to provide granular progress updates.
+        /// For batch processing without progress tracking, use InferBatchAsync() instead,
+        /// which sends all images to the server in a single request for better performance.
         /// </summary>
         public async Task<List<PredictionResult>> InferBatchWithProgressAsync(
             IEnumerable<string> imagePaths,
@@ -151,6 +155,25 @@ namespace GeoLens.Services
             }
 
             return results;
+        }
+
+        /// <summary>
+        /// Compute MD5 hash of an image file for caching purposes
+        /// </summary>
+        private string? ComputeMd5Hash(string filePath)
+        {
+            try
+            {
+                using var md5 = MD5.Create();
+                using var stream = File.OpenRead(filePath);
+                var hash = md5.ComputeHash(stream);
+                return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error computing MD5 for {filePath}: {ex.Message}");
+                return null;
+            }
         }
 
         public void Dispose()

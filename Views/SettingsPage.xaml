@@ -47,7 +47,8 @@
                                  Header="Enable Prediction Cache"
                                  IsOn="True"
                                  OnContent="Enabled - Results cached for instant recall"
-                                 OffContent="Disabled - All predictions will query API"/>
+                                 OffContent="Disabled - All predictions will query API"
+                                 Toggled="OnSettingChanged"/>
 
                     <!-- Cache Expiration -->
                     <StackPanel Spacing="8">
@@ -56,7 +57,8 @@
                         <ComboBox x:Name="CacheExpirationCombo"
                                  SelectedIndex="1"
                                  HorizontalAlignment="Stretch"
-                                 MinWidth="200">
+                                 MinWidth="200"
+                                 SelectionChanged="OnSettingChanged">
                             <ComboBoxItem Content="7 days"/>
                             <ComboBoxItem Content="30 days"/>
                             <ComboBoxItem Content="90 days"/>
@@ -75,7 +77,8 @@
                             <TextBlock Text="Current Cache"
                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                       FontSize="12"/>
-                            <TextBlock Text="0 entries, 0 MB"
+                            <TextBlock x:Name="CacheInfoText"
+                                      Text="0 entries, 0 MB"
                                       FontSize="13"
                                       FontWeight="SemiBold"/>
                         </StackPanel>
@@ -87,16 +90,18 @@
                                     <Flyout>
                                         <StackPanel Spacing="8" Width="250">
                                             <TextBlock Text="Cache Statistics" Style="{StaticResource SubtitleTextBlockStyle}"/>
-                                            <TextBlock Text="Total Entries: 0" FontSize="12"/>
-                                            <TextBlock Text="Cache Hits: 0" FontSize="12"/>
-                                            <TextBlock Text="Cache Misses: 0" FontSize="12"/>
-                                            <TextBlock Text="Hit Rate: 0%" FontSize="12"/>
-                                            <TextBlock Text="Total Size: 0 MB" FontSize="12"/>
+                                            <TextBlock x:Name="StatTotalEntriesText" Text="Total Entries: 0" FontSize="12"/>
+                                            <TextBlock x:Name="StatCacheHitsText" Text="Cache Hits: 0" FontSize="12"/>
+                                            <TextBlock x:Name="StatCacheMissesText" Text="Cache Misses: 0" FontSize="12"/>
+                                            <TextBlock x:Name="StatHitRateText" Text="Hit Rate: 0%" FontSize="12"/>
+                                            <TextBlock x:Name="StatTotalSizeText" Text="Total Size: 0 MB" FontSize="12"/>
                                         </StackPanel>
                                     </Flyout>
                                 </Button.Flyout>
                             </Button>
-                            <Button Content="Clear Cache"/>
+                            <Button x:Name="ClearCacheButton"
+                                   Content="Clear Cache"
+                                   Click="ClearCache_Click"/>
                         </StackPanel>
                     </Grid>
                 </StackPanel>
@@ -133,7 +138,8 @@
                                    Value="5"
                                    TickFrequency="1"
                                    SnapsTo="Ticks"
-                                   Header="Top-K Predictions"/>
+                                   Header="Top-K Predictions"
+                                   ValueChanged="OnSettingChanged"/>
                             <TextBlock Grid.Column="1"
                                       Text="{x:Bind TopKSlider.Value, Mode=OneWay}"
                                       VerticalAlignment="Center"
@@ -149,14 +155,16 @@
                                  Header="Show EXIF GPS First"
                                  IsOn="True"
                                  OnContent="EXIF GPS shown as primary result"
-                                 OffContent="EXIF GPS shown with AI predictions"/>
+                                 OffContent="EXIF GPS shown with AI predictions"
+                                 Toggled="OnSettingChanged"/>
 
                     <!-- Geographic Clustering -->
                     <ToggleSwitch x:Name="ClusteringToggle"
                                  Header="Enable Geographic Clustering"
                                  IsOn="True"
                                  OnContent="Boost confidence for clustered predictions"
-                                 OffContent="Use raw probabilities only"/>
+                                 OffContent="Use raw probabilities only"
+                                 Toggled="OnSettingChanged"/>
                 </StackPanel>
             </Expander>
 
@@ -180,7 +188,8 @@
                                  Header="Offline Mode"
                                  IsOn="False"
                                  OnContent="Using local map tiles"
-                                 OffContent="Using online map services"/>
+                                 OffContent="Using online map services"
+                                 Toggled="OnSettingChanged"/>
 
                     <!-- Map Render Mode -->
                     <StackPanel Spacing="8">
@@ -189,7 +198,8 @@
                         <ComboBox x:Name="MapRenderModeCombo"
                                  SelectedIndex="0"
                                  HorizontalAlignment="Stretch"
-                                 MinWidth="200">
+                                 MinWidth="200"
+                                 SelectionChanged="OnSettingChanged">
                             <ComboBoxItem Content="3D Globe (WebGL)"/>
                             <ComboBoxItem Content="2D Flat Map"/>
                             <ComboBoxItem Content="3D Globe (Win2D)"/>
@@ -222,16 +232,27 @@
                                  Header="Show Image Thumbnails"
                                  IsOn="True"
                                  OnContent="Thumbnails displayed in queue"
-                                 OffContent="Text-only list mode"/>
+                                 OffContent="Text-only list mode"
+                                 Toggled="OnSettingChanged"/>
 
                     <!-- Thumbnail Size -->
                     <StackPanel Spacing="8">
                         <TextBlock Text="Thumbnail Size"
                                   Style="{StaticResource BodyStrongTextBlockStyle}"/>
                         <StackPanel Spacing="8">
-                            <RadioButton Content="Small (48px)" GroupName="ThumbnailSize"/>
-                            <RadioButton Content="Medium (72px)" GroupName="ThumbnailSize" IsChecked="True"/>
-                            <RadioButton Content="Large (96px)" GroupName="ThumbnailSize"/>
+                            <RadioButton x:Name="ThumbnailSizeSmallRadio"
+                                        Content="Small (48px)"
+                                        GroupName="ThumbnailSize"
+                                        Checked="ThumbnailSize_Changed"/>
+                            <RadioButton x:Name="ThumbnailSizeMediumRadio"
+                                        Content="Medium (72px)"
+                                        GroupName="ThumbnailSize"
+                                        IsChecked="True"
+                                        Checked="ThumbnailSize_Changed"/>
+                            <RadioButton x:Name="ThumbnailSizeLargeRadio"
+                                        Content="Large (96px)"
+                                        GroupName="ThumbnailSize"
+                                        Checked="ThumbnailSize_Changed"/>
                         </StackPanel>
                     </StackPanel>
 
@@ -240,9 +261,19 @@
                         <TextBlock Text="Application Theme"
                                   Style="{StaticResource BodyStrongTextBlockStyle}"/>
                         <StackPanel Spacing="8">
-                            <RadioButton Content="Dark (Default)" GroupName="AppTheme" IsChecked="True"/>
-                            <RadioButton Content="Light" GroupName="AppTheme"/>
-                            <RadioButton Content="Use System Setting" GroupName="AppTheme"/>
+                            <RadioButton x:Name="ThemeDarkRadio"
+                                        Content="Dark (Default)"
+                                        GroupName="AppTheme"
+                                        IsChecked="True"
+                                        Checked="AppTheme_Changed"/>
+                            <RadioButton x:Name="ThemeLightRadio"
+                                        Content="Light"
+                                        GroupName="AppTheme"
+                                        Checked="AppTheme_Changed"/>
+                            <RadioButton x:Name="ThemeSystemRadio"
+                                        Content="Use System Setting"
+                                        GroupName="AppTheme"
+                                        Checked="AppTheme_Changed"/>
                         </StackPanel>
                     </StackPanel>
                 </StackPanel>
@@ -277,21 +308,24 @@
                         <TextBlock Grid.Row="0" Grid.Column="0"
                                   Text="Detected GPU:"
                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock Grid.Row="0" Grid.Column="1"
+                        <TextBlock x:Name="DetectedGpuText"
+                                  Grid.Row="0" Grid.Column="1"
                                   Text="Not detected yet"
                                   FontWeight="SemiBold"/>
 
                         <TextBlock Grid.Row="1" Grid.Column="0"
                                   Text="Using Runtime:"
                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock Grid.Row="1" Grid.Column="1"
+                        <TextBlock x:Name="UsingRuntimeText"
+                                  Grid.Row="1" Grid.Column="1"
                                   Text="CPU (python_cpu)"
                                   FontWeight="SemiBold"/>
 
                         <TextBlock Grid.Row="2" Grid.Column="0"
                                   Text="Model Status:"
                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock Grid.Row="2" Grid.Column="1"
+                        <TextBlock x:Name="ModelStatusText"
+                                  Grid.Row="2" Grid.Column="1"
                                   Text="Not loaded"
                                   FontWeight="SemiBold"/>
                     </Grid>

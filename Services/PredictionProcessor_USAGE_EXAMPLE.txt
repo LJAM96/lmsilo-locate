@@ -1,0 +1,332 @@
+PREDICTION PROCESSOR USAGE EXAMPLES
+===================================
+
+The PredictionProcessor orchestrates the complete prediction pipeline:
+1. Check cache first
+2. Extract EXIF GPS (if cache miss)
+3. Call GeoCLIP API (if needed)
+4. Run clustering analysis
+5. Save to cache
+6. Return EnhancedPredictionResult
+
+--------------------------------------------------------------------------------
+SETUP - Creating the PredictionProcessor
+--------------------------------------------------------------------------------
+
+// Initialize all required services
+var cacheService = new PredictionCacheService();
+await cacheService.InitializeAsync();
+
+var exifExtractor = new ExifMetadataExtractor();
+var apiClient = new GeoCLIPApiClient("http://localhost:8899");
+var clusterAnalyzer = new GeographicClusterAnalyzer();
+
+// Create the processor (orchestrates all services)
+var processor = new PredictionProcessor(
+    cacheService,
+    exifExtractor,
+    apiClient,
+    clusterAnalyzer
+);
+
+--------------------------------------------------------------------------------
+EXAMPLE 1 - Process a Single Image
+--------------------------------------------------------------------------------
+
+// Process one image through the complete pipeline
+var result = await processor.ProcessImageAsync(
+    imagePath: @"C:\Photos\vacation.jpg",
+    topK: 5,
+    device: "auto"  // or "cpu", "cuda", "rocm"
+);
+
+// Check if result is from cache
+if (result.FromCache)
+{
+    Debug.WriteLine($"Retrieved from cache (instant result!)");
+}
+else
+{
+    Debug.WriteLine($"Processed via AI pipeline");
+}
+
+// Check for EXIF GPS
+if (result.HasExifGps)
+{
+    Debug.WriteLine($"GPS found in EXIF: {result.ExifGps.Latitude}, {result.ExifGps.Longitude}");
+}
+
+// Display AI predictions
+foreach (var prediction in result.AiPredictions)
+{
+    Debug.WriteLine($"#{prediction.Rank}: {prediction.LocationSummary} " +
+                    $"({prediction.AdjustedProbability:P1}, {prediction.ConfidenceLevel})");
+
+    if (prediction.IsPartOfCluster)
+    {
+        Debug.WriteLine($"  ↳ Part of cluster (confidence boosted)");
+    }
+}
+
+// Check clustering info
+if (result.ClusterInfo?.IsClustered == true)
+{
+    Debug.WriteLine($"Predictions clustered within {result.ClusterInfo.ClusterRadius:F1}km");
+}
+
+// Show reliability message
+Debug.WriteLine($"Reliability: {result.ReliabilityMessage}");
+
+--------------------------------------------------------------------------------
+EXAMPLE 2 - Force Refresh (Skip Cache)
+--------------------------------------------------------------------------------
+
+// Force API call even if cached result exists
+var freshResult = await processor.ProcessImageAsync(
+    imagePath: @"C:\Photos\vacation.jpg",
+    topK: 5,
+    device: "auto",
+    forceApiCall: true  // Skip cache, always call API
+);
+
+Debug.WriteLine($"Forced refresh, FromCache={freshResult.FromCache}"); // Will be false
+
+--------------------------------------------------------------------------------
+EXAMPLE 3 - Batch Processing with Progress
+--------------------------------------------------------------------------------
+
+// Process multiple images with progress reporting
+var imagePaths = new List<string>
+{
+    @"C:\Photos\image1.jpg",
+    @"C:\Photos\image2.jpg",
+    @"C:\Photos\image3.jpg",
+    @"C:\Photos\image4.jpg",
+    @"C:\Photos\image5.jpg"
+};
+
+// Create progress handler
+var progress = new Progress<BatchProgress>(p =>
+{
+    Debug.WriteLine($"Progress: {p.ProgressPercentage:F0}% - {p.ProgressMessage}");
+    Debug.WriteLine($"  Total: {p.TotalImages}, Processed: {p.ProcessedImages}, Cached: {p.CachedImages}");
+
+    if (!string.IsNullOrEmpty(p.CurrentImage))
+    {
+        Debug.WriteLine($"  Current: {p.CurrentImage}");
+    }
+});
+
+// Process batch
+var results = await processor.ProcessBatchAsync(
+    imagePaths: imagePaths,
+    topK: 5,
+    device: "auto",
+    forceApiCall: false,
+    progress: progress
+);
+
+// Summary
+var cachedCount = results.Count(r => r.FromCache);
+var apiCount = results.Count - cachedCount;
+Debug.WriteLine($"Batch complete: {results.Count} images ({cachedCount} cached, {apiCount} via API)");
+
+--------------------------------------------------------------------------------
+EXAMPLE 4 - Batch Processing with Cancellation
+--------------------------------------------------------------------------------
+
+// Create cancellation token source
+var cts = new CancellationTokenSource();
+
+// Cancel after 30 seconds
+cts.CancelAfter(TimeSpan.FromSeconds(30));
+
+// Wire up cancel button
+cancelButton.Click += (s, e) => cts.Cancel();
+
+try
+{
+    var results = await processor.ProcessBatchAsync(
+        imagePaths: imagePaths,
+        topK: 5,
+        device: "auto",
+        progress: progress,
+        cancellationToken: cts.Token
+    );
+
+    Debug.WriteLine($"Processed {results.Count} images before completion/cancellation");
+}
+catch (OperationCanceledException)
+{
+    Debug.WriteLine("Batch processing was cancelled by user");
+}
+finally
+{
+    cts.Dispose();
+}
+
+--------------------------------------------------------------------------------
+EXAMPLE 5 - Using Results in UI (MainPage Integration)
+--------------------------------------------------------------------------------
+
+// In MainPage.xaml.cs
+private PredictionProcessor _processor;
+
+private async void MainPage_Loaded(object sender, RoutedEventArgs e)
+{
+    // Initialize services
+    var cacheService = new PredictionCacheService();
+    await cacheService.InitializeAsync();
+
+    var exifExtractor = new ExifMetadataExtractor();
+    var clusterAnalyzer = new GeographicClusterAnalyzer();
+
+    // Create processor
+    _processor = new PredictionProcessor(
+        cacheService,
+        exifExtractor,
+        App.ApiClient,  // Use global API client
+        clusterAnalyzer
+    );
+}
+
+private async void ProcessImages_Click(object sender, RoutedEventArgs e)
+{
+    // Get queued images
+    var imagePaths = ImageQueue
+        .Where(i => i.Status == QueueStatus.Queued)
+        .Select(i => i.FilePath)
+        .ToList();
+
+    if (imagePaths.Count == 0) return;
+
+    // Progress handler updates UI
+    var progress = new Progress<BatchProgress>(p =>
+    {
+        StatusMessage.Text = p.ProgressMessage;
+        ProgressBar.Value = p.ProgressPercentage;
+    });
+
+    // Process batch through unified pipeline
+    var results = await _processor.ProcessBatchAsync(
+        imagePaths: imagePaths,
+        topK: 5,
+        device: "auto",
+        progress: progress
+    );
+
+    // Display first result
+    if (results.Count > 0)
+    {
+        await DisplayResultAsync(results[0]);
+    }
+}
+
+private async Task DisplayResultAsync(EnhancedPredictionResult result)
+{
+    // Clear existing predictions
+    Predictions.Clear();
+
+    // Show EXIF GPS if available
+    HasExifGps = result.HasExifGps;
+    if (result.HasExifGps)
+    {
+        ExifLocationName = result.ExifGps.LocationName ?? "GPS Location";
+        ExifLat = result.ExifGps.LatitudeFormatted;
+        ExifLon = result.ExifGps.LongitudeFormatted;
+
+        // Add EXIF as prediction with VeryHigh confidence
+        Predictions.Add(new EnhancedLocationPrediction
+        {
+            Rank = 0,
+            Latitude = result.ExifGps.Latitude,
+            Longitude = result.ExifGps.Longitude,
+            Probability = 1.0,
+            AdjustedProbability = 1.0,
+            LocationSummary = "EXIF GPS Data",
+            ConfidenceLevel = ConfidenceLevel.VeryHigh
+        });
+    }
+
+    // Add AI predictions (already clustered and boosted by processor)
+    foreach (var pred in result.AiPredictions)
+    {
+        Predictions.Add(pred);
+    }
+
+    // Show reliability message
+    ReliabilityMessage = result.ReliabilityMessage;
+
+    // Add cache indicator
+    if (result.FromCache)
+    {
+        ReliabilityMessage += " (cached)";
+    }
+
+    // Update map
+    await UpdateMapWithPredictions(result);
+}
+
+--------------------------------------------------------------------------------
+EXAMPLE 6 - Error Handling
+--------------------------------------------------------------------------------
+
+try
+{
+    var result = await processor.ProcessImageAsync(imagePath);
+
+    // Check if we got predictions
+    if (result.AiPredictions.Count == 0 && !result.HasExifGps)
+    {
+        Debug.WriteLine("Warning: No predictions or EXIF GPS available");
+        // Show message to user
+        ShowNotification("No location data found for this image", InfoBarSeverity.Warning);
+    }
+}
+catch (Exception ex)
+{
+    Debug.WriteLine($"Error processing image: {ex.Message}");
+    ShowNotification($"Processing failed: {ex.Message}", InfoBarSeverity.Error);
+}
+
+--------------------------------------------------------------------------------
+BENEFITS OF USING PREDICTIONPROCESSOR
+--------------------------------------------------------------------------------
+
+1. **Simplified Code**: One method call instead of 5+ separate service calls
+2. **Automatic Caching**: Handles cache check and storage automatically
+3. **Consistent Processing**: Same pipeline for all images
+4. **Progress Tracking**: Built-in batch progress reporting
+5. **Error Resilience**: Graceful error handling at each pipeline stage
+6. **Pre-Clustered Results**: Clustering analysis already applied
+7. **DTO Conversion**: Automatic conversion from API DTOs to UI models
+
+BEFORE (Manual Pipeline):
+--------------------------
+var cached = await _cacheService.GetCachedPredictionAsync(path);
+if (cached == null)
+{
+    var exif = await _exifExtractor.ExtractGpsDataAsync(path);
+    var apiResult = await _apiClient.InferSingleAsync(path, 5);
+    var predictions = ConvertToPredictions(apiResult);
+    var cluster = _clusterAnalyzer.AnalyzeClusters(predictions);
+    await _cacheService.StorePredictionAsync(path, apiResult.Predictions, exif);
+    // Build result manually...
+}
+
+AFTER (Using PredictionProcessor):
+-----------------------------------
+var result = await processor.ProcessImageAsync(path, topK: 5);
+// Done! Result has everything: EXIF, predictions, clustering, cache status
+
+--------------------------------------------------------------------------------
+NOTES
+--------------------------------------------------------------------------------
+
+- The processor ALWAYS extracts EXIF even for cached results (cache stores EXIF)
+- Clustering is run every time to ensure fresh analysis
+- Cache storage failures are non-fatal (logged but don't stop processing)
+- Progress reporting processes images sequentially (intentional for granular updates)
+- ForceApiCall=true is useful for debugging or when you want fresh predictions
+- Device parameter is passed to API: "auto", "cpu", "cuda", "rocm"
+- CancellationToken is respected at image boundaries during batch processing
