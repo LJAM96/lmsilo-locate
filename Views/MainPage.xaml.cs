@@ -8,35 +8,33 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using MUXC = Microsoft.UI.Xaml.Controls;
 
 namespace GeoLens.Views
 {
     public sealed partial class MainPage : Page, INotifyPropertyChanged
     {
-        private bool _isAllSelected;
         private bool _hasExifGps;
         private string _reliabilityMessage = "No image selected";
+        private string _selectedCountText = "";
 
         // Observable Collections
         public ObservableCollection<ImageQueueItem> ImageQueue { get; } = new();
         public ObservableCollection<EnhancedLocationPrediction> Predictions { get; } = new();
 
         // Properties for UI bindings
-        public bool IsAllSelected
+        public string SelectedCountText
         {
-            get => _isAllSelected;
+            get => _selectedCountText;
             set
             {
-                if (_isAllSelected != value)
+                if (_selectedCountText != value)
                 {
-                    _isAllSelected = value;
+                    _selectedCountText = value;
                     OnPropertyChanged();
-                    UpdateAllSelections(value);
                 }
             }
         }
-
-        public string SelectedCountText => $"{ImageQueue.Count(i => i.IsSelected)} selected";
 
         public string QueueStatusMessage => ImageQueue.Count == 0
             ? "No images in queue"
@@ -76,6 +74,15 @@ namespace GeoLens.Views
         {
             this.InitializeComponent();
             LoadMockData();
+
+            // Wire up selection changed event
+            ImageListView.SelectionChanged += ImageListView_SelectionChanged;
+        }
+
+        private void ImageListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            var selectedCount = ImageListView.SelectedItems.Count;
+            SelectedCountText = selectedCount > 0 ? $"{selectedCount} selected" : "";
         }
 
         private void LoadMockData()
@@ -127,7 +134,6 @@ namespace GeoLens.Views
 
             foreach (var item in mockImages)
             {
-                item.PropertyChanged += ImageQueueItem_PropertyChanged;
                 ImageQueue.Add(item);
             }
 
@@ -229,22 +235,6 @@ namespace GeoLens.Views
             return writeableBitmap;
         }
 
-        private void ImageQueueItem_PropertyChanged(object? sender, PropertyChangedEventArgs e)
-        {
-            if (e.PropertyName == nameof(ImageQueueItem.IsSelected))
-            {
-                OnPropertyChanged(nameof(SelectedCountText));
-            }
-        }
-
-        private void UpdateAllSelections(bool selected)
-        {
-            foreach (var item in ImageQueue)
-            {
-                item.IsSelected = selected;
-            }
-        }
-
         // Event Handlers
         private void AddImages_Click(object sender, RoutedEventArgs e)
         {
@@ -258,7 +248,6 @@ namespace GeoLens.Views
                 ThumbnailSource = CreateMockThumbnail("#" + Random.Shared.Next(0x1000000).ToString("X6"))
             };
 
-            newImage.PropertyChanged += ImageQueueItem_PropertyChanged;
             ImageQueue.Add(newImage);
             OnPropertyChanged(nameof(QueueStatusMessage));
         }
@@ -274,27 +263,28 @@ namespace GeoLens.Views
             ReliabilityMessage = "Processing images...";
         }
 
+        private void SelectAll_Click(object sender, RoutedEventArgs e)
+        {
+            ImageListView.SelectAll();
+        }
+
         private void ExportSelection_Click(object sender, RoutedEventArgs e)
         {
-            var selectedCount = ImageQueue.Count(i => i.IsSelected);
+            var selectedCount = ImageListView.SelectedItems.Count;
             // TODO: Implement export functionality
             System.Diagnostics.Debug.WriteLine($"Export {selectedCount} selected images");
         }
 
         private void ClearSelection_Click(object sender, RoutedEventArgs e)
         {
-            foreach (var item in ImageQueue)
-            {
-                item.IsSelected = false;
-            }
+            ImageListView.SelectedItems.Clear();
         }
 
         private void RemoveSelected_Click(object sender, RoutedEventArgs e)
         {
-            var toRemove = ImageQueue.Where(i => i.IsSelected).ToList();
+            var toRemove = ImageListView.SelectedItems.Cast<ImageQueueItem>().ToList();
             foreach (var item in toRemove)
             {
-                item.PropertyChanged -= ImageQueueItem_PropertyChanged;
                 ImageQueue.Remove(item);
             }
             OnPropertyChanged(nameof(QueueStatusMessage));
@@ -303,6 +293,28 @@ namespace GeoLens.Views
         private void OpenSettings_Click(object sender, RoutedEventArgs e)
         {
             App.ShowSettingsWindow();
+        }
+
+        private void NavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
+        {
+            if (args.SelectedItem is NavigationViewItem item)
+            {
+                var tag = item.Tag?.ToString();
+                switch (tag)
+                {
+                    case "main":
+                        // Show main content
+                        MainContentGrid.Visibility = Visibility.Visible;
+                        break;
+
+                    case "settings":
+                        // Navigate to settings
+                        App.ShowSettingsWindow();
+                        // Keep main selected
+                        NavView.SelectedItem = NavView.MenuItems[0];
+                        break;
+                }
+            }
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;
