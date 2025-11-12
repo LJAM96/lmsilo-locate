@@ -329,32 +329,36 @@ body {
     z-index: 1000;
     background: var(--bg-secondary);
     border-radius: 8px;
-    padding: 0.25rem;
+    padding: 0.5rem;
     display: flex;
-    gap: 0.25rem;
-    box-shadow: 0 2px 10px var(--shadow);
+    gap: 0.5rem;
+    box-shadow: 0 4px 15px var(--shadow);
+    border: 1px solid var(--border-color);
 }
 
 .toggle-btn {
-    padding: 0.5rem 1rem;
+    padding: 0.75rem 1.5rem;
     border: none;
-    background: transparent;
+    background: var(--bg-tertiary);
     color: var(--text-secondary);
     cursor: pointer;
     border-radius: 6px;
-    font-size: 0.9rem;
-    font-weight: 500;
+    font-size: 1rem;
+    font-weight: 600;
     transition: all 0.2s ease;
+    min-width: 100px;
 }
 
 .toggle-btn:hover {
-    background: var(--bg-tertiary);
+    background: var(--border-color);
     color: var(--text-primary);
+    transform: translateY(-1px);
 }
 
 .toggle-btn.active {
-    background: var(--accent-cyan);
+    background: linear-gradient(135deg, var(--accent-cyan), var(--accent-green));
     color: var(--bg-primary);
+    box-shadow: 0 0 15px rgba(0, 212, 255, 0.5);
 }
 
 .map-view {
