@@ -52,6 +52,13 @@ body {
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+    margin-bottom: 0.25rem;
+}
+
+.subtitle {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    font-weight: normal;
 }
 
 .status {
@@ -322,57 +329,153 @@ body {
     background: var(--bg-primary);
 }
 
-.view-toggle {
-    position: absolute;
-    top: 1rem;
-    left: 1rem;
-    z-index: 1000;
-    background: var(--bg-secondary);
-    border-radius: 8px;
-    padding: 0.5rem;
+/* Tab Navigation */
+.tab-nav {
     display: flex;
     gap: 0.5rem;
-    box-shadow: 0 4px 15px var(--shadow);
-    border: 1px solid var(--border-color);
+    padding: 1rem;
+    background: var(--bg-secondary);
+    border-bottom: 2px solid var(--border-color);
+    overflow-x: auto;
+    flex-wrap: wrap;
 }
 
-.toggle-btn {
-    padding: 0.75rem 1.5rem;
-    border: none;
+.tab-nav::-webkit-scrollbar {
+    height: 4px;
+}
+
+.tab-nav::-webkit-scrollbar-track {
+    background: var(--bg-tertiary);
+}
+
+.tab-nav::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 2px;
+}
+
+.tab-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--border-color);
     background: var(--bg-tertiary);
     color: var(--text-secondary);
     cursor: pointer;
     border-radius: 6px;
-    font-size: 1rem;
-    font-weight: 600;
+    font-size: 0.9rem;
     transition: all 0.2s ease;
-    min-width: 100px;
+    min-width: 120px;
 }
 
-.toggle-btn:hover {
-    background: var(--border-color);
+.tab-btn strong {
     color: var(--text-primary);
-    transform: translateY(-1px);
+    margin-bottom: 0.25rem;
 }
 
-.toggle-btn.active {
+.tab-size {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.tab-btn:hover {
+    background: var(--border-color);
+    border-color: var(--accent-cyan);
+    transform: translateY(-2px);
+}
+
+.tab-btn.active {
     background: linear-gradient(135deg, var(--accent-cyan), var(--accent-green));
+    border-color: var(--accent-cyan);
+    box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3);
+}
+
+.tab-btn.active strong,
+.tab-btn.active .tab-size {
     color: var(--bg-primary);
-    box-shadow: 0 0 15px rgba(0, 212, 255, 0.5);
+}
+
+.tab-btn.recommended {
+    position: relative;
+}
+
+.tab-btn.recommended::after {
+    content: '';
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    width: 12px;
+    height: 12px;
+    background: var(--accent-green);
+    border-radius: 50%;
+    box-shadow: 0 0 10px var(--accent-green);
+}
+
+/* Tab Content */
+.tab-content-wrapper {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+}
+
+.tab-content {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: none;
+    flex-direction: column;
+}
+
+.tab-content.active {
+    display: flex;
+}
+
+.tab-info {
+    background: var(--bg-secondary);
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.tab-info h3 {
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+}
+
+.tab-info p {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-bottom: 0.75rem;
+}
+
+.tab-info ul {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.5rem;
+    font-size: 0.85rem;
+}
+
+.tab-info li {
+    color: var(--text-secondary);
 }
 
 .map-view {
+    flex: 1;
     width: 100%;
-    height: 100%;
-    display: none;
-}
-
-.map-view.active {
-    display: block;
-}
-
-#map2d {
     background: var(--bg-primary);
+    position: relative;
+}
+
+/* Cesium specific */
+.cesium-viewer .cesium-widget-credits {
+    display: none !important;
+}
+
+.cesium-viewer {
+    height: 100% !important;
 }
 
 /* Legend */
