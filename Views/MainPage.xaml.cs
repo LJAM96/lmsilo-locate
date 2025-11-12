@@ -9,6 +9,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
@@ -22,6 +23,14 @@ namespace GeoLens.Views
         private string _reliabilityMessage = "No image selected";
         private string _selectedCountText = "";
         private IMapProvider? _mapProvider;
+        private readonly PredictionCacheService _cacheService = new();
+        private readonly GeographicClusterAnalyzer _clusterAnalyzer = new();
+        private readonly ExportService _exportService = new();
+        private ClusterAnalysisResult? _currentClusterInfo;
+
+        // Current image data for export
+        private string _currentImagePath = "";
+        private ExifGpsData? _currentExifData;
 
         // Observable Collections
         public ObservableCollection<ImageQueueItem> ImageQueue { get; } = new();
@@ -89,6 +98,18 @@ namespace GeoLens.Views
 
         private async void MainPage_Loaded(object sender, RoutedEventArgs e)
         {
+            // Initialize cache service
+            try
+            {
+                await _cacheService.InitializeAsync();
+                System.Diagnostics.Debug.WriteLine("[MainPage] Cache service initialized");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MainPage] Cache initialization failed (non-fatal): {ex.Message}");
+                // Cache failure should not block app startup
+            }
+
             await InitializeMapAsync();
         }
 
@@ -372,54 +393,119 @@ namespace GeoLens.Views
 
             try
             {
-                // Update status to processing
+                ReliabilityMessage = "Checking cache and processing images...";
+
+                var exifExtractor = new Services.ExifMetadataExtractor();
+                var uncachedImages = new List<ImageQueueItem>();
+                var exifData = new Dictionary<string, ExifGpsData?>();
+                int cachedCount = 0;
+                int processedCount = 0;
+
+                // Process each image: check cache first, then API if needed
                 foreach (var item in queuedImages)
                 {
                     item.Status = QueueStatus.Processing;
-                }
 
-                ReliabilityMessage = "Processing images...";
+                    // Step 1: Check cache
+                    var cached = await _cacheService.GetCachedPredictionAsync(item.FilePath);
 
-                // Extract EXIF data first
-                var exifExtractor = new Services.ExifMetadataExtractor();
-                var exifData = new Dictionary<string, ExifGpsData?>();
-
-                foreach (var item in queuedImages)
-                {
-                    var gpsData = await exifExtractor.ExtractGpsDataAsync(item.FilePath);
-                    exifData[item.FilePath] = gpsData;
-
-                    if (gpsData?.HasGps == true)
+                    if (cached != null)
                     {
-                        System.Diagnostics.Debug.WriteLine($"[ProcessImages] Found GPS in {Path.GetFileName(item.FilePath)}: {gpsData.Latitude:F6}, {gpsData.Longitude:F6}");
-                    }
-                }
+                        // Cache hit - instant result!
+                        System.Diagnostics.Debug.WriteLine($"[ProcessImages] Cache HIT for: {item.FileName}");
 
-                // Call API for predictions
-                var imagePaths = queuedImages.Select(i => i.FilePath).ToList();
-                var response = await App.ApiClient.InferBatchAsync(imagePaths, topK: 5);
+                        item.Status = QueueStatus.Cached;
+                        item.IsCached = true;
+                        cachedCount++;
 
-                // Process results
-                if (response != null)
-                {
-                    foreach (var result in response)
-                {
-                    var imageItem = ImageQueue.FirstOrDefault(i => i.FilePath == result.Path);
-                    if (imageItem != null)
-                    {
-                        imageItem.Status = string.IsNullOrEmpty(result.Error) ? QueueStatus.Done : QueueStatus.Error;
-
-                        // Display predictions for first image (or selected image)
-                        if (imageItem == queuedImages.First())
+                        // Display predictions for first image
+                        if (processedCount == 0)
                         {
-                            var gps = exifData.ContainsKey(result.Path) ? exifData[result.Path] : null;
-                            await DisplayPredictionsAsync(result, gps);
+                            await DisplayCachedPredictionsAsync(cached);
+                        }
+
+                        processedCount++;
+                    }
+                    else
+                    {
+                        // Cache miss - need to call API
+                        System.Diagnostics.Debug.WriteLine($"[ProcessImages] Cache MISS for: {item.FileName}");
+                        uncachedImages.Add(item);
+
+                        // Extract EXIF data for uncached images
+                        var gpsData = await exifExtractor.ExtractGpsDataAsync(item.FilePath);
+                        exifData[item.FilePath] = gpsData;
+
+                        if (gpsData?.HasGps == true)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[ProcessImages] Found GPS in {item.FileName}: {gpsData.Latitude:F6}, {gpsData.Longitude:F6}");
                         }
                     }
                 }
+
+                // Step 2: Process uncached images via API
+                if (uncachedImages.Count > 0)
+                {
+                    ReliabilityMessage = $"Processing {uncachedImages.Count} image(s) via AI...";
+
+                    var imagePaths = uncachedImages.Select(i => i.FilePath).ToList();
+                    var response = await App.ApiClient.InferBatchAsync(imagePaths, topK: 5);
+
+                    // Process API results
+                    if (response != null)
+                    {
+                        foreach (var result in response)
+                        {
+                            var imageItem = ImageQueue.FirstOrDefault(i => i.FilePath == result.Path);
+                            if (imageItem != null)
+                            {
+                                if (string.IsNullOrEmpty(result.Error))
+                                {
+                                    imageItem.Status = QueueStatus.Done;
+                                    imageItem.IsCached = false;
+
+                                    // Store in cache for future lookups
+                                    var gps = exifData.ContainsKey(result.Path) ? exifData[result.Path] : null;
+                                    await _cacheService.StorePredictionAsync(
+                                        result.Path,
+                                        result.Predictions ?? new List<Services.DTOs.PredictionCandidate>(),
+                                        gps
+                                    );
+
+                                    System.Diagnostics.Debug.WriteLine($"[ProcessImages] Stored in cache: {System.IO.Path.GetFileName(result.Path)}");
+
+                                    // Display predictions for first image if no cached images were shown
+                                    if (processedCount == cachedCount && imageItem == uncachedImages.First())
+                                    {
+                                        await DisplayPredictionsAsync(result, gps);
+                                    }
+                                }
+                                else
+                                {
+                                    imageItem.Status = QueueStatus.Error;
+                                }
+
+                                processedCount++;
+                            }
+                        }
+                    }
                 }
 
-                ReliabilityMessage = $"Processed {queuedImages.Count} image(s)";
+                // Update status message
+                if (cachedCount > 0 && uncachedImages.Count > 0)
+                {
+                    ReliabilityMessage = $"Processed {processedCount} image(s) ({cachedCount} from cache, {uncachedImages.Count} via AI)";
+                }
+                else if (cachedCount > 0)
+                {
+                    ReliabilityMessage = $"Retrieved {cachedCount} image(s) from cache (instant results!)";
+                }
+                else
+                {
+                    ReliabilityMessage = $"Processed {processedCount} image(s) via AI";
+                }
+
+                System.Diagnostics.Debug.WriteLine($"[ProcessImages] Summary: {cachedCount} cached, {uncachedImages.Count} processed, {processedCount} total");
             }
             catch (Exception ex)
             {
@@ -429,13 +515,20 @@ namespace GeoLens.Views
                 // Mark as error
                 foreach (var item in queuedImages)
                 {
-                    item.Status = QueueStatus.Error;
+                    if (item.Status == QueueStatus.Processing)
+                    {
+                        item.Status = QueueStatus.Error;
+                    }
                 }
             }
         }
 
         private async Task DisplayPredictionsAsync(Services.DTOs.PredictionResult result, ExifGpsData? exifGps)
         {
+            // Store current image data for export
+            _currentImagePath = result.Path;
+            _currentExifData = exifGps;
+
             // Clear existing predictions
             Predictions.Clear();
 
@@ -504,6 +597,7 @@ namespace GeoLens.Views
                         Latitude = pred.Latitude,
                         Longitude = pred.Longitude,
                         Probability = pred.Probability,
+                        AdjustedProbability = pred.Probability, // Will be updated by cluster analysis
                         City = pred.City ?? "",
                         State = pred.State ?? "",
                         County = pred.County ?? "",
@@ -529,6 +623,25 @@ namespace GeoLens.Views
                     }
                 }
 
+                // Run cluster analysis on AI predictions (exclude EXIF which has Rank = 0)
+                var aiPredictions = Predictions.Where(p => p.Rank > 0).ToList();
+                if (aiPredictions.Count >= 2)
+                {
+                    _currentClusterInfo = _clusterAnalyzer.AnalyzeClusters(aiPredictions);
+
+                    System.Diagnostics.Debug.WriteLine($"[DisplayPredictions] Cluster analysis: IsClustered={_currentClusterInfo.IsClustered}, Radius={_currentClusterInfo.ClusterRadius:F1}km");
+
+                    // Update ReliabilityMessage based on clustering (only if no EXIF GPS)
+                    if (!HasExifGps && _currentClusterInfo.IsClustered)
+                    {
+                        ReliabilityMessage = $"High reliability - predictions clustered within {_currentClusterInfo.ClusterRadius:F0}km";
+                    }
+                }
+                else
+                {
+                    _currentClusterInfo = null;
+                }
+
                 // Rotate to first location (EXIF if available, otherwise first AI prediction)
                 if (Predictions.Count > 0 && _mapProvider != null && _mapProvider.IsReady)
                 {
@@ -538,7 +651,148 @@ namespace GeoLens.Views
 
                 if (!HasExifGps)
                 {
-                    ReliabilityMessage = $"Showing {result.Predictions.Count} AI predictions";
+                    // Set default message if clustering didn't already set it
+                    if (_currentClusterInfo == null || !_currentClusterInfo.IsClustered)
+                    {
+                        ReliabilityMessage = $"Showing {result.Predictions.Count} AI predictions";
+                    }
+                }
+            }
+        }
+
+        private async Task DisplayCachedPredictionsAsync(CachedPredictionEntry cached)
+        {
+            // Store current image data for export
+            _currentImagePath = cached.ImagePath;
+            _currentExifData = cached.ExifGps;
+
+            // Clear existing predictions
+            Predictions.Clear();
+
+            // Clear map markers
+            if (_mapProvider != null && _mapProvider.IsReady)
+            {
+                await _mapProvider.ClearPinsAsync();
+            }
+
+            // Show EXIF GPS if available in cached entry
+            if (cached.ExifGps?.HasGps == true)
+            {
+                HasExifGps = true;
+                ExifLocationName = cached.ExifGps.LocationName ?? "GPS Location from Image";
+                ExifLat = cached.ExifGps.LatitudeFormatted;
+                ExifLon = cached.ExifGps.LongitudeFormatted;
+
+                // Add EXIF GPS as a prediction (with VeryHigh confidence)
+                var exifPrediction = new EnhancedLocationPrediction
+                {
+                    Rank = 0, // Special rank for EXIF
+                    Latitude = cached.ExifGps.Latitude,
+                    Longitude = cached.ExifGps.Longitude,
+                    Probability = 1.0,
+                    AdjustedProbability = 1.0,
+                    City = "",
+                    State = "",
+                    Country = "",
+                    LocationSummary = "EXIF GPS Data",
+                    IsPartOfCluster = false,
+                    ConfidenceLevel = ConfidenceLevel.VeryHigh
+                };
+
+                Predictions.Add(exifPrediction);
+
+                // Add EXIF marker to map
+                if (_mapProvider != null && _mapProvider.IsReady)
+                {
+                    await _mapProvider.AddPinAsync(
+                        cached.ExifGps.Latitude,
+                        cached.ExifGps.Longitude,
+                        "EXIF GPS Location",
+                        1.0,
+                        0,
+                        isExif: true
+                    );
+                }
+
+                ReliabilityMessage = "GPS coordinates found in image metadata - highest reliability (cached)";
+            }
+            else
+            {
+                HasExifGps = false;
+            }
+
+            // Add AI predictions from cache
+            if (cached.Predictions != null && cached.Predictions.Count > 0)
+            {
+                for (int i = 0; i < cached.Predictions.Count; i++)
+                {
+                    var pred = cached.Predictions[i];
+
+                    var prediction = new EnhancedLocationPrediction
+                    {
+                        Rank = i + 1,
+                        Latitude = pred.Latitude,
+                        Longitude = pred.Longitude,
+                        Probability = pred.Probability,
+                        AdjustedProbability = pred.Probability, // Will be updated by cluster analysis
+                        City = pred.City ?? "",
+                        State = pred.State ?? "",
+                        County = pred.County ?? "",
+                        Country = pred.Country ?? "",
+                        LocationSummary = BuildLocationSummary(pred),
+                        IsPartOfCluster = false,
+                        ConfidenceLevel = ClassifyConfidence(pred.Probability)
+                    };
+
+                    Predictions.Add(prediction);
+
+                    // Add marker to map
+                    if (_mapProvider != null && _mapProvider.IsReady)
+                    {
+                        await _mapProvider.AddPinAsync(
+                            prediction.Latitude,
+                            prediction.Longitude,
+                            prediction.LocationSummary,
+                            prediction.Probability,
+                            prediction.Rank,
+                            isExif: false
+                        );
+                    }
+                }
+
+                // Run cluster analysis on AI predictions (exclude EXIF which has Rank = 0)
+                var aiPredictions = Predictions.Where(p => p.Rank > 0).ToList();
+                if (aiPredictions.Count >= 2)
+                {
+                    _currentClusterInfo = _clusterAnalyzer.AnalyzeClusters(aiPredictions);
+
+                    System.Diagnostics.Debug.WriteLine($"[DisplayCachedPredictions] Cluster analysis: IsClustered={_currentClusterInfo.IsClustered}, Radius={_currentClusterInfo.ClusterRadius:F1}km");
+
+                    // Update ReliabilityMessage based on clustering (only if no EXIF GPS)
+                    if (!HasExifGps && _currentClusterInfo.IsClustered)
+                    {
+                        ReliabilityMessage = $"High reliability - predictions clustered within {_currentClusterInfo.ClusterRadius:F0}km (cached)";
+                    }
+                }
+                else
+                {
+                    _currentClusterInfo = null;
+                }
+
+                // Rotate to first location (EXIF if available, otherwise first AI prediction)
+                if (Predictions.Count > 0 && _mapProvider != null && _mapProvider.IsReady)
+                {
+                    var first = Predictions[0];
+                    await _mapProvider.RotateToLocationAsync(first.Latitude, first.Longitude, 1500);
+                }
+
+                if (!HasExifGps)
+                {
+                    // Set default message if clustering didn't already set it
+                    if (_currentClusterInfo == null || !_currentClusterInfo.IsClustered)
+                    {
+                        ReliabilityMessage = $"Showing {cached.Predictions.Count} AI predictions (cached)";
+                    }
                 }
             }
         }
@@ -567,11 +821,52 @@ namespace GeoLens.Views
             ImageListView.SelectAll();
         }
 
-        private void ExportSelection_Click(object sender, RoutedEventArgs e)
+        private async void ExportSelection_Click(object sender, RoutedEventArgs e)
         {
-            var selectedCount = ImageListView.SelectedItems.Count;
-            // TODO: Implement export functionality
-            System.Diagnostics.Debug.WriteLine($"Export {selectedCount} selected images");
+            // Show a menu flyout with export format options
+            var flyout = new MenuFlyout();
+
+            var csvItem = new MenuFlyoutItem { Text = "Export as CSV", Icon = new SymbolIcon(Symbol.Document) };
+            csvItem.Click += ExportCsv_Click;
+            flyout.Items.Add(csvItem);
+
+            var jsonItem = new MenuFlyoutItem { Text = "Export as JSON", Icon = new SymbolIcon(Symbol.Document) };
+            jsonItem.Click += ExportJson_Click;
+            flyout.Items.Add(jsonItem);
+
+            var pdfItem = new MenuFlyoutItem { Text = "Export as PDF", Icon = new SymbolIcon(Symbol.Document) };
+            pdfItem.Click += ExportPdf_Click;
+            flyout.Items.Add(pdfItem);
+
+            var kmlItem = new MenuFlyoutItem { Text = "Export as KML", Icon = new SymbolIcon(Symbol.Map) };
+            kmlItem.Click += ExportKml_Click;
+            flyout.Items.Add(kmlItem);
+
+            // Show the flyout at the button location
+            if (sender is FrameworkElement element)
+            {
+                flyout.ShowAt(element);
+            }
+        }
+
+        private async void ExportCsv_Click(object sender, RoutedEventArgs e)
+        {
+            await ExportCurrentResultAsync("csv", "CSV File", ".csv");
+        }
+
+        private async void ExportJson_Click(object sender, RoutedEventArgs e)
+        {
+            await ExportCurrentResultAsync("json", "JSON File", ".json");
+        }
+
+        private async void ExportPdf_Click(object sender, RoutedEventArgs e)
+        {
+            await ExportCurrentResultAsync("pdf", "PDF Document", ".pdf");
+        }
+
+        private async void ExportKml_Click(object sender, RoutedEventArgs e)
+        {
+            await ExportCurrentResultAsync("kml", "KML File", ".kml");
         }
 
         private void ClearSelection_Click(object sender, RoutedEventArgs e)
@@ -610,6 +905,142 @@ namespace GeoLens.Views
                         break;
                 }
             }
+        }
+
+        // Export Helper Methods
+        private async Task ExportCurrentResultAsync(string format, string fileTypeDescription, string fileExtension)
+        {
+            try
+            {
+                // Validate that we have predictions to export
+                if (Predictions.Count == 0)
+                {
+                    ShowExportFeedback("No predictions available to export", InfoBarSeverity.Warning);
+                    return;
+                }
+
+                if (string.IsNullOrEmpty(_currentImagePath))
+                {
+                    ShowExportFeedback("No image selected for export", InfoBarSeverity.Warning);
+                    return;
+                }
+
+                // Get window handle for file picker
+                var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
+
+                // Show file save picker
+                var suggestedFileName = $"{Path.GetFileNameWithoutExtension(_currentImagePath)}_predictions{fileExtension}";
+                var outputPath = await _exportService.ShowSaveFilePickerAsync(
+                    hwnd,
+                    suggestedFileName,
+                    fileTypeDescription,
+                    fileExtension
+                );
+
+                if (string.IsNullOrEmpty(outputPath))
+                {
+                    // User cancelled
+                    return;
+                }
+
+                // Build the enhanced prediction result
+                var result = BuildEnhancedPredictionResult();
+
+                // Export based on format
+                string exportedPath;
+                switch (format.ToLower())
+                {
+                    case "csv":
+                        exportedPath = await _exportService.ExportToCsvAsync(result, outputPath);
+                        break;
+
+                    case "json":
+                        exportedPath = await _exportService.ExportToJsonAsync(result, outputPath);
+                        break;
+
+                    case "pdf":
+                        // Load thumbnail for PDF
+                        byte[]? thumbnailBytes = null;
+                        try
+                        {
+                            thumbnailBytes = await LoadThumbnailBytesAsync(_currentImagePath);
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[Export] Failed to load thumbnail: {ex.Message}");
+                        }
+                        exportedPath = await _exportService.ExportToPdfAsync(result, outputPath, thumbnailBytes);
+                        break;
+
+                    case "kml":
+                        exportedPath = await _exportService.ExportToKmlAsync(result, outputPath);
+                        break;
+
+                    default:
+                        throw new InvalidOperationException($"Unknown export format: {format}");
+                }
+
+                ShowExportFeedback($"Successfully exported to {Path.GetFileName(exportedPath)}", InfoBarSeverity.Success);
+                System.Diagnostics.Debug.WriteLine($"[Export] Exported to: {exportedPath}");
+            }
+            catch (Exception ex)
+            {
+                ShowExportFeedback($"Export failed: {ex.Message}", InfoBarSeverity.Error);
+                System.Diagnostics.Debug.WriteLine($"[Export] Error: {ex}");
+            }
+        }
+
+        private EnhancedPredictionResult BuildEnhancedPredictionResult()
+        {
+            // Get AI predictions (exclude EXIF which has Rank = 0)
+            var aiPredictions = Predictions.Where(p => p.Rank > 0).ToList();
+
+            return new EnhancedPredictionResult
+            {
+                ImagePath = _currentImagePath,
+                AiPredictions = aiPredictions,
+                ExifGps = _currentExifData,
+                ClusterInfo = _currentClusterInfo
+            };
+        }
+
+        private async Task<byte[]?> LoadThumbnailBytesAsync(string imagePath)
+        {
+            try
+            {
+                if (!File.Exists(imagePath))
+                    return null;
+
+                var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(imagePath);
+
+                // Get thumbnail
+                var thumbnail = await file.GetThumbnailAsync(
+                    Windows.Storage.FileProperties.ThumbnailMode.PicturesView,
+                    300,
+                    Windows.Storage.FileProperties.ThumbnailOptions.UseCurrentScale
+                );
+
+                if (thumbnail == null)
+                    return null;
+
+                // Convert to byte array
+                using var stream = thumbnail.AsStream();
+                using var memoryStream = new MemoryStream();
+                await stream.CopyToAsync(memoryStream);
+                return memoryStream.ToArray();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[LoadThumbnail] Error: {ex.Message}");
+                return null;
+            }
+        }
+
+        private void ShowExportFeedback(string message, InfoBarSeverity severity)
+        {
+            ExportFeedbackBar.Message = message;
+            ExportFeedbackBar.Severity = severity;
+            ExportFeedbackBar.IsOpen = true;
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;

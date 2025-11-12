@@ -437,6 +437,11 @@
                             Message="{x:Bind ReliabilityMessage, Mode=OneWay}"
                             IsClosable="False"/>
 
+                    <!-- Export Feedback -->
+                    <InfoBar x:Name="ExportFeedbackBar"
+                            IsOpen="False"
+                            IsClosable="True"/>
+
                     <!-- AI Predictions Section -->
                     <StackPanel Spacing="8">
                         <TextBlock Text="AI Predictions"
@@ -593,7 +598,8 @@
                             </Grid.RowDefinitions>
 
                             <Button Grid.Row="0" Grid.Column="0"
-                                   HorizontalAlignment="Stretch">
+                                   HorizontalAlignment="Stretch"
+                                   Click="ExportCsv_Click">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <FontIcon Glyph="&#xE8A5;"/>
                                     <TextBlock Text="CSV"/>
@@ -601,7 +607,8 @@
                             </Button>
 
                             <Button Grid.Row="0" Grid.Column="1"
-                                   HorizontalAlignment="Stretch">
+                                   HorizontalAlignment="Stretch"
+                                   Click="ExportPdf_Click">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <FontIcon Glyph="&#xE8A5;"/>
                                     <TextBlock Text="PDF"/>
@@ -609,7 +616,8 @@
                             </Button>
 
                             <Button Grid.Row="1" Grid.Column="0"
-                                   HorizontalAlignment="Stretch">
+                                   HorizontalAlignment="Stretch"
+                                   Click="ExportKml_Click">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <FontIcon Glyph="&#xE909;"/>
                                     <TextBlock Text="KML"/>
@@ -617,10 +625,11 @@
                             </Button>
 
                             <Button Grid.Row="1" Grid.Column="1"
-                                   HorizontalAlignment="Stretch">
+                                   HorizontalAlignment="Stretch"
+                                   Click="ExportJson_Click">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <FontIcon Glyph="&#xE8C8;"/>
-                                    <TextBlock Text="Copy All"/>
+                                    <TextBlock Text="JSON"/>
                                 </StackPanel>
                             </Button>
                         </Grid>
