@@ -9,6 +9,17 @@
     mc:Ignorable="d"
     Background="{StaticResource AppBackgroundBrush}">
 
+    <!-- Page Transitions -->
+    <Page.Transitions>
+        <TransitionCollection>
+            <NavigationThemeTransition>
+                <NavigationThemeTransition.DefaultNavigationTransitionInfo>
+                    <EntranceNavigationTransitionInfo/>
+                </NavigationThemeTransition.DefaultNavigationTransitionInfo>
+            </NavigationThemeTransition>
+        </TransitionCollection>
+    </Page.Transitions>
+
     <!-- NavigationView with Hamburger Menu -->
     <NavigationView x:Name="NavView"
                    PaneDisplayMode="Left"
@@ -197,6 +208,16 @@
                         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                         <Setter Property="Padding" Value="0"/>
                         <Setter Property="Margin" Value="0"/>
+                        <Setter Property="Transitions">
+                            <Setter.Value>
+                                <TransitionCollection>
+                                    <AddDeleteThemeTransition/>
+                                    <ContentThemeTransition/>
+                                    <ReorderThemeTransition/>
+                                    <EntranceThemeTransition IsStaggeringEnabled="True"/>
+                                </TransitionCollection>
+                            </Setter.Value>
+                        </Setter>
                     </Style>
                 </ListView.ItemContainerStyle>
             </ListView>
