@@ -70,7 +70,7 @@
     <PackageReference Include="System.Net.Http.Json" Version="9.0.0" />
     <PackageReference Include="System.Data.SQLite.Core" Version="1.0.119" />
     <!-- Phase 4: WebView2 for 3D Globe -->
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2792.45" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3179.45" />
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
   <ItemGroup>
