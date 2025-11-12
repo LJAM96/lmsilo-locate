@@ -123,6 +123,45 @@ namespace GeoLens.Services
                 metadata.Width = decoder.PixelWidth;
                 metadata.Height = decoder.PixelHeight;
 
+                // Orientation
+                metadata.Orientation = await TryGetUshortPropertyAsync(properties, "/app1/ifd/{ushort=274}"); // Orientation
+
+                // Color space
+                var colorSpaceValue = await TryGetUshortPropertyAsync(properties, "/app1/ifd/exif/{ushort=40961}"); // ColorSpace
+                metadata.ColorSpace = colorSpaceValue switch
+                {
+                    1 => "sRGB",
+                    2 => "Adobe RGB",
+                    0xFFFF => "Uncalibrated",
+                    _ => null
+                };
+
+                // Flash
+                metadata.Flash = await TryGetUshortPropertyAsync(properties, "/app1/ifd/exif/{ushort=37385}"); // Flash
+
+                // White Balance
+                var wbValue = await TryGetUshortPropertyAsync(properties, "/app1/ifd/exif/{ushort=41987}"); // WhiteBalance
+                metadata.WhiteBalance = wbValue switch
+                {
+                    0 => "Auto",
+                    1 => "Manual",
+                    _ => null
+                };
+
+                // Exposure Mode
+                var expModeValue = await TryGetUshortPropertyAsync(properties, "/app1/ifd/exif/{ushort=41986}"); // ExposureMode
+                metadata.ExposureMode = expModeValue switch
+                {
+                    0 => "Auto",
+                    1 => "Manual",
+                    2 => "Auto bracket",
+                    _ => null
+                };
+
+                // File size
+                var fileInfo = new System.IO.FileInfo(imagePath);
+                metadata.FileSize = fileInfo.Length;
+
                 return metadata;
             }
             catch (Exception ex)
@@ -368,6 +407,12 @@ namespace GeoLens.Services
         public DateTime? DateTaken { get; set; }
         public uint Width { get; set; }
         public uint Height { get; set; }
+        public long? FileSize { get; set; }
+        public int? Orientation { get; set; }
+        public string? ColorSpace { get; set; }
+        public int? Flash { get; set; }
+        public string? ExposureMode { get; set; }
+        public string? WhiteBalance { get; set; }
 
         public string CameraInfo
         {
@@ -396,6 +441,30 @@ namespace GeoLens.Services
                 }
                 if (FocalLength.HasValue) parts.Add($"{FocalLength:F0}mm");
                 return parts.Count > 0 ? string.Join(" • ", parts) : "No capture data";
+            }
+        }
+
+        public string ShutterSpeedFormatted
+        {
+            get
+            {
+                if (!ExposureTime.HasValue) return "N/A";
+                if (ExposureTime.Value >= 1)
+                    return $"{ExposureTime.Value:F1}s";
+                return $"1/{(int)(1 / ExposureTime.Value)}s";
+            }
+        }
+
+        public string ResolutionFormatted => $"{Width} × {Height}";
+        public string MegapixelsFormatted => $"{(Width * Height / 1_000_000.0):F1} MP";
+        public string FileSizeFormatted
+        {
+            get
+            {
+                if (!FileSize.HasValue) return "Unknown";
+                if (FileSize < 1024) return $"{FileSize} B";
+                if (FileSize < 1024 * 1024) return $"{FileSize / 1024.0:F1} KB";
+                return $"{FileSize / (1024.0 * 1024.0):F1} MB";
             }
         }
     }

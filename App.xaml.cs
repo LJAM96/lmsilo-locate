@@ -21,10 +21,16 @@ namespace GeoLens
         public static PythonRuntimeManager? PythonManager { get; private set; }
         public static GeoCLIPApiClient? ApiClient { get; private set; }
         public static HardwareInfo? DetectedHardware { get; private set; }
+        public static UserSettingsService SettingsService { get; private set; } = null!;
+        public static PredictionCacheService CacheService { get; private set; } = null!;
 
         public App()
         {
             InitializeComponent();
+
+            // Initialize services
+            SettingsService = new UserSettingsService();
+            CacheService = new PredictionCacheService();
 
             // Register for application exit to dispose services
             this.UnhandledException += App_UnhandledException;
@@ -47,6 +53,7 @@ namespace GeoLens
             {
                 ApiClient?.Dispose();
                 PythonManager?.Dispose();
+                CacheService?.Dispose();
                 Debug.WriteLine("[App] Services disposed successfully");
             }
             catch (Exception ex)
@@ -111,6 +118,13 @@ namespace GeoLens
         {
             try
             {
+                // Stage 0: Load settings (2% progress)
+                _loadingPage?.UpdateStatus("Loading settings...");
+                _loadingPage?.UpdateProgress(2);
+                await SettingsService.LoadSettingsAsync();
+                await CacheService.InitializeAsync();
+                Debug.WriteLine("[App] Settings and cache initialized");
+
                 // Stage 1: Detect hardware (5% progress)
                 _loadingPage?.UpdateStatus("Detecting hardware...");
                 _loadingPage?.UpdateProgress(5);
@@ -120,6 +134,12 @@ namespace GeoLens
                 var hardwareService = new HardwareDetectionService();
                 DetectedHardware = hardwareService.DetectHardware();
                 Debug.WriteLine($"[App] Detected: {DetectedHardware.Description}");
+
+                // Update hardware info in settings
+                SettingsService.UpdateHardwareInfo(
+                    DetectedHardware.Description,
+                    DetectedHardware.Type.ToString()
+                );
 
                 _loadingPage?.UpdateSubStatus(DetectedHardware.Description);
                 await Task.Delay(100);

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace GeoLens.Models
@@ -12,6 +13,8 @@ namespace GeoLens.Models
         public ExifGpsData? ExifGps { get; set; }
         public bool HasExifGps => ExifGps?.HasGps == true;
         public ClusterAnalysisResult? ClusterInfo { get; set; }
+        public bool FromCache { get; set; }
+        public DateTime ProcessedAt { get; set; }
 
         /// <summary>
         /// Reliability message for UI display

@@ -10,6 +10,13 @@
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
           crossorigin=""/>
 
+    <!-- Leaflet.heat CSS (optional, for custom styling) -->
+    <style>
+        .leaflet-heatmap-layer {
+            opacity: 0.8;
+        }
+    </style>
+
     <style>
         * {
             margin: 0;
@@ -198,6 +205,9 @@
             integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
             crossorigin=""></script>
 
+    <!-- Leaflet.heat plugin for heatmap visualization -->
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+
     <script>
         // Configuration
         const config = {
@@ -217,6 +227,9 @@
         let onlineTileLayer = null;
         let offlineTileLayer = null;
         let usingOfflineFallback = false;
+        let heatmapLayer = null;
+        let hotspotMarkers = [];
+        let isHeatmapMode = false;
 
         // Dark tile layer providers
         const tileProviders = {
@@ -451,8 +464,147 @@
 
         // Enable/disable heatmap mode
         function setHeatmapMode(enabled) {
-            // TODO: Implement heatmap with Leaflet.heat plugin
+            isHeatmapMode = enabled;
             console.log('Heatmap mode:', enabled);
+        }
+
+        // Show heatmap visualization
+        function showHeatmap(heatmapData) {
+            if (!map) return;
+
+            try {
+                console.log('Showing heatmap:', heatmapData);
+
+                // Hide existing markers
+                if (markerLayer) {
+                    markerLayer.clearLayers();
+                    markers = [];
+                }
+
+                // Remove existing heatmap layer
+                if (heatmapLayer) {
+                    map.removeLayer(heatmapLayer);
+                }
+
+                // Convert grid points to Leaflet.heat format: [lat, lng, intensity]
+                const heatPoints = heatmapData.gridPoints.map(point => [
+                    point.lat,
+                    point.lng,
+                    point.intensity
+                ]);
+
+                console.log(`Creating heatmap with ${heatPoints.length} points`);
+
+                // Create heatmap layer
+                heatmapLayer = L.heatLayer(heatPoints, {
+                    radius: 25,          // Radius of each point in pixels
+                    blur: 35,            // Blur radius
+                    maxZoom: 10,         // Max zoom for intensity calculation
+                    max: 1.0,            // Maximum intensity value
+                    minOpacity: 0.3,     // Minimum opacity
+                    gradient: {          // Dark mode color gradient
+                        0.0: '#000033',  // Dark blue (low)
+                        0.3: '#0044ff',  // Blue
+                        0.5: '#00ffaa',  // Cyan/green
+                        0.7: '#ffff00',  // Yellow
+                        1.0: '#ff0000'   // Red (high)
+                    }
+                }).addTo(map);
+
+                // Add hotspot markers
+                if (heatmapData.hotspots && heatmapData.hotspots.length > 0) {
+                    console.log(`Adding ${heatmapData.hotspots.length} hotspot markers`);
+
+                    heatmapData.hotspots.forEach(hotspot => {
+                        const icon = L.divIcon({
+                            className: 'custom-marker marker-glow',
+                            html: `<div style="width: 16px; height: 16px; background: #ffffff; border-radius: 50%; border: 2px solid rgba(0,0,0,0.5); box-shadow: 0 0 10px rgba(255,255,255,0.6);"></div>`,
+                            iconSize: [16, 16],
+                            iconAnchor: [8, 8],
+                            popupAnchor: [0, -8]
+                        });
+
+                        const popupContent = `
+                            <div class="popup-title">🔥 Hotspot Region</div>
+                            <div class="popup-details">
+                                <strong>Location:</strong><br>${hotspot.locationName}<br>
+                                <strong>Coordinates:</strong><br>
+                                ${hotspot.lat.toFixed(6)}°, ${hotspot.lng.toFixed(6)}°<br>
+                                <span class="confidence-badge confidence-high">
+                                    Intensity: ${(hotspot.intensity * 100).toFixed(1)}%
+                                </span><br>
+                                <small>${hotspot.predictionCount} prediction(s) • ${hotspot.radiusKm.toFixed(1)} km radius</small>
+                            </div>
+                        `;
+
+                        const marker = L.marker([hotspot.lat, hotspot.lng], { icon: icon })
+                            .bindPopup(popupContent, {
+                                maxWidth: 280,
+                                className: 'custom-popup'
+                            });
+
+                        marker.addTo(markerLayer);
+                        hotspotMarkers.push(marker);
+                    });
+
+                    // Fit map to show all hotspots
+                    if (hotspotMarkers.length > 0) {
+                        const group = L.featureGroup(hotspotMarkers);
+                        map.fitBounds(group.getBounds(), {
+                            padding: [50, 50],
+                            maxZoom: 8
+                        });
+                    }
+                }
+
+                isHeatmapMode = true;
+                console.log('Heatmap displayed successfully');
+            } catch (error) {
+                console.error('Error showing heatmap:', error);
+            }
+        }
+
+        // Hide heatmap visualization
+        function hideHeatmap() {
+            if (!map) return;
+
+            // Remove heatmap layer
+            if (heatmapLayer) {
+                map.removeLayer(heatmapLayer);
+                heatmapLayer = null;
+            }
+
+            // Remove hotspot markers
+            hotspotMarkers.forEach(marker => {
+                markerLayer.removeLayer(marker);
+            });
+            hotspotMarkers = [];
+
+            isHeatmapMode = false;
+            console.log('Heatmap hidden');
+        }
+
+        // Toggle between heatmap and pins mode
+        function toggleHeatmapMode(showHeatmap) {
+            if (showHeatmap) {
+                // Show heatmap (if we have heatmap data, caller will call showHeatmap)
+                // Hide regular markers
+                if (markerLayer) {
+                    markerLayer.clearLayers();
+                    markers.forEach(m => markerLayer.removeLayer(m));
+                }
+                isHeatmapMode = true;
+            } else {
+                // Hide heatmap
+                hideHeatmap();
+
+                // Restore regular markers
+                markers.forEach(marker => {
+                    marker.addTo(markerLayer);
+                });
+                isHeatmapMode = false;
+            }
+            console.log('Toggled heatmap mode:', showHeatmap);
         }
 
         // Expose API to C#
@@ -464,8 +616,12 @@
             fitToMarkers: fitToMarkers,
             setMapMode: setMapMode,
             setHeatmapMode: setHeatmapMode,
+            showHeatmap: showHeatmap,
+            hideHeatmap: hideHeatmap,
+            toggleHeatmapMode: toggleHeatmapMode,
             isReady: () => map !== null,
-            isUsingOffline: () => usingOfflineFallback
+            isUsingOffline: () => usingOfflineFallback,
+            isHeatmapMode: () => isHeatmapMode
         };
 
         // Initialize on load

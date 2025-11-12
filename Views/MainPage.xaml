@@ -6,6 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:local="using:GeoLens.Models"
+    xmlns:views="using:GeoLens.Views"
     xmlns:controls="using:Microsoft.UI.Xaml.Controls"
     mc:Ignorable="d"
     Background="{StaticResource AppBackgroundBrush}">
@@ -106,6 +107,53 @@
                                  Click="ClearSelection_Click"/>
                 </CommandBar.SecondaryCommands>
             </CommandBar>
+
+            <!-- Multi-Selection Toolbar (appears when 2+ images selected) -->
+            <Border x:Name="MultiSelectToolbar"
+                   Grid.Row="0"
+                   Background="{ThemeResource SystemFillColorAttentionBackgroundBrush}"
+                   BorderBrush="{ThemeResource SystemFillColorAttentionBrush}"
+                   BorderThickness="0,0,0,1"
+                   Padding="12,8"
+                   Visibility="Collapsed">
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0"
+                               Orientation="Horizontal"
+                               Spacing="8">
+                        <ToggleButton x:Name="HeatmapToggle"
+                                     Content="Heatmap"
+                                     MinWidth="110"
+                                     Checked="HeatmapToggle_Checked"
+                                     Unchecked="HeatmapToggle_Unchecked">
+                            <ToggleButton.Icon>
+                                <FontIcon Glyph="&#xE81E;"/>
+                            </ToggleButton.Icon>
+                        </ToggleButton>
+
+                        <Button Content="Overlay All"
+                               MinWidth="110"
+                               Click="OverlayAll_Click">
+                            <Button.Icon>
+                                <FontIcon Glyph="&#xE8B3;"/>
+                            </Button.Icon>
+                        </Button>
+                    </StackPanel>
+
+                    <TextBlock Grid.Column="1"
+                              x:Name="MultiSelectStatusText"
+                              VerticalAlignment="Center"
+                              HorizontalAlignment="Right"
+                              Text="2 images selected"
+                              Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                              FontWeight="SemiBold"
+                              FontSize="12"/>
+                </Grid>
+            </Border>
 
             <!-- Image ListView (Single Column) -->
             <ListView x:Name="ImageListView"
@@ -376,6 +424,10 @@
 
             <ScrollViewer Padding="16">
                 <StackPanel Spacing="16">
+
+                    <!-- EXIF Metadata Panel -->
+                    <views:ExifMetadataPanel x:Name="ExifPanel"
+                                            Visibility="Collapsed"/>
 
                     <!-- EXIF GPS Card (if available) -->
                     <Expander x:Name="ExifGpsExpander"

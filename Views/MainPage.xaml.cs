@@ -26,11 +26,16 @@ namespace GeoLens.Views
         private readonly PredictionCacheService _cacheService = new();
         private readonly GeographicClusterAnalyzer _clusterAnalyzer = new();
         private readonly ExportService _exportService = new();
+        private readonly PredictionHeatmapGenerator _heatmapGenerator = new();
         private ClusterAnalysisResult? _currentClusterInfo;
 
         // Current image data for export
         private string _currentImagePath = "";
         private ExifGpsData? _currentExifData;
+
+        // Heatmap state
+        private HeatmapData? _currentHeatmap;
+        private bool _isHeatmapMode = false;
 
         // Observable Collections
         public ObservableCollection<ImageQueueItem> ImageQueue { get; } = new();
@@ -160,10 +165,34 @@ namespace GeoLens.Views
             }
         }
 
-        private void ImageListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private async void ImageListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             var selectedCount = ImageListView.SelectedItems.Count;
             SelectedCountText = selectedCount > 0 ? $"{selectedCount} selected" : "";
+
+            // Show/hide multi-select toolbar
+            if (selectedCount >= 2)
+            {
+                MultiSelectToolbar.Visibility = Visibility.Visible;
+                MultiSelectStatusText.Text = $"{selectedCount} images selected";
+
+                // If heatmap mode is active, update the heatmap
+                if (_isHeatmapMode && HeatmapToggle.IsChecked == true)
+                {
+                    await UpdateHeatmapAsync();
+                }
+            }
+            else
+            {
+                MultiSelectToolbar.Visibility = Visibility.Collapsed;
+
+                // Exit heatmap mode if less than 2 images selected
+                if (_isHeatmapMode)
+                {
+                    HeatmapToggle.IsChecked = false;
+                    _isHeatmapMode = false;
+                }
+            }
         }
 
         private void LoadMockData()
@@ -529,6 +558,19 @@ namespace GeoLens.Views
             _currentImagePath = result.Path;
             _currentExifData = exifGps;
 
+            // Load extended EXIF metadata for the panel
+            var extractor = new ExifMetadataExtractor();
+            var extendedMetadata = await extractor.ExtractExtendedMetadataAsync(result.Path);
+            if (extendedMetadata != null)
+            {
+                ExifPanel.LoadMetadata(extendedMetadata);
+                ExifPanel.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                ExifPanel.Visibility = Visibility.Collapsed;
+            }
+
             // Clear existing predictions
             Predictions.Clear();
 
@@ -665,6 +707,19 @@ namespace GeoLens.Views
             // Store current image data for export
             _currentImagePath = cached.ImagePath;
             _currentExifData = cached.ExifGps;
+
+            // Load extended EXIF metadata for the panel
+            var extractor = new ExifMetadataExtractor();
+            var extendedMetadata = await extractor.ExtractExtendedMetadataAsync(cached.ImagePath);
+            if (extendedMetadata != null)
+            {
+                ExifPanel.LoadMetadata(extendedMetadata);
+                ExifPanel.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                ExifPanel.Visibility = Visibility.Collapsed;
+            }
 
             // Clear existing predictions
             Predictions.Clear();
@@ -1048,6 +1103,184 @@ namespace GeoLens.Views
         private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+
+        // Heatmap Event Handlers
+        private async void HeatmapToggle_Checked(object sender, RoutedEventArgs e)
+        {
+            _isHeatmapMode = true;
+            await UpdateHeatmapAsync();
+        }
+
+        private async void HeatmapToggle_Unchecked(object sender, RoutedEventArgs e)
+        {
+            _isHeatmapMode = false;
+
+            if (_mapProvider != null && _mapProvider.IsReady)
+            {
+                await _mapProvider.HideHeatmapAsync();
+
+                // Restore individual pins for currently displayed image
+                if (Predictions.Count > 0)
+                {
+                    await _mapProvider.ClearPinsAsync();
+
+                    foreach (var pred in Predictions)
+                    {
+                        await _mapProvider.AddPinAsync(
+                            pred.Latitude,
+                            pred.Longitude,
+                            pred.LocationSummary,
+                            pred.Probability,
+                            pred.Rank,
+                            isExif: pred.Rank == 0
+                        );
+                    }
+
+                    var first = Predictions[0];
+                    await _mapProvider.RotateToLocationAsync(first.Latitude, first.Longitude, 1500);
+                }
+            }
+        }
+
+        private async void OverlayAll_Click(object sender, RoutedEventArgs e)
+        {
+            // Get all selected images
+            var selected = ImageListView.SelectedItems.Cast<ImageQueueItem>().ToList();
+
+            if (selected.Count < 2)
+            {
+                ReliabilityMessage = "Select 2 or more images to overlay predictions";
+                return;
+            }
+
+            // Collect all predictions and show them as individual pins (overlay mode)
+            if (_mapProvider != null && _mapProvider.IsReady)
+            {
+                await _mapProvider.ClearPinsAsync();
+
+                int totalPins = 0;
+                foreach (var item in selected)
+                {
+                    var cached = await _cacheService.GetCachedPredictionAsync(item.FilePath);
+                    if (cached != null)
+                    {
+                        // Add EXIF GPS if available
+                        if (cached.ExifGps?.HasGps == true)
+                        {
+                            await _mapProvider.AddPinAsync(
+                                cached.ExifGps.Latitude,
+                                cached.ExifGps.Longitude,
+                                $"{item.FileName} (EXIF)",
+                                1.0,
+                                0,
+                                isExif: true
+                            );
+                            totalPins++;
+                        }
+
+                        // Add AI predictions
+                        for (int i = 0; i < Math.Min(3, cached.Predictions.Count); i++)
+                        {
+                            var pred = cached.Predictions[i];
+                            await _mapProvider.AddPinAsync(
+                                pred.Latitude,
+                                pred.Longitude,
+                                $"{item.FileName} (#{i + 1})",
+                                pred.Probability,
+                                i + 1,
+                                isExif: false
+                            );
+                            totalPins++;
+                        }
+                    }
+                }
+
+                ReliabilityMessage = $"Showing {totalPins} predictions from {selected.Count} images (overlay mode)";
+
+                System.Diagnostics.Debug.WriteLine($"[OverlayAll] Displayed {totalPins} pins from {selected.Count} images");
+            }
+        }
+
+        /// <summary>
+        /// Generate and display heatmap from selected images
+        /// </summary>
+        private async Task UpdateHeatmapAsync()
+        {
+            try
+            {
+                var selected = ImageListView.SelectedItems.Cast<ImageQueueItem>().ToList();
+
+                if (selected.Count < 2)
+                {
+                    ReliabilityMessage = "Select 2 or more images for heatmap visualization";
+                    return;
+                }
+
+                // Collect prediction results from selected images
+                var results = new List<EnhancedPredictionResult>();
+
+                foreach (var item in selected)
+                {
+                    var cached = await _cacheService.GetCachedPredictionAsync(item.FilePath);
+                    if (cached != null)
+                    {
+                        // Convert cached entry to EnhancedPredictionResult
+                        var result = new EnhancedPredictionResult
+                        {
+                            ImagePath = cached.ImagePath,
+                            ExifGps = cached.ExifGps,
+                            AiPredictions = new List<EnhancedLocationPrediction>()
+                        };
+
+                        // Convert predictions
+                        for (int i = 0; i < cached.Predictions.Count; i++)
+                        {
+                            var pred = cached.Predictions[i];
+                            result.AiPredictions.Add(new EnhancedLocationPrediction
+                            {
+                                Rank = i + 1,
+                                Latitude = pred.Latitude,
+                                Longitude = pred.Longitude,
+                                Probability = pred.Probability,
+                                AdjustedProbability = pred.Probability,
+                                City = pred.City ?? "",
+                                State = pred.State ?? "",
+                                Country = pred.Country ?? "",
+                                LocationSummary = BuildLocationSummary(pred),
+                                ConfidenceLevel = ClassifyConfidence(pred.Probability)
+                            });
+                        }
+
+                        results.Add(result);
+                    }
+                }
+
+                if (results.Count < 2)
+                {
+                    ReliabilityMessage = "Not enough processed images for heatmap (minimum 2 required)";
+                    return;
+                }
+
+                // Generate heatmap
+                _currentHeatmap = _heatmapGenerator.GenerateHeatmap(results);
+
+                // Update status
+                ReliabilityMessage = $"Heatmap: {_currentHeatmap.TotalPredictions} predictions from {_currentHeatmap.ImageCount} images, {_currentHeatmap.Hotspots.Count} hotspot(s)";
+
+                // Display heatmap
+                if (_mapProvider != null && _mapProvider.IsReady)
+                {
+                    await _mapProvider.ShowHeatmapAsync(_currentHeatmap);
+                }
+
+                System.Diagnostics.Debug.WriteLine($"[Heatmap] Generated from {results.Count} images, {_currentHeatmap.TotalPredictions} predictions, {_currentHeatmap.Hotspots.Count} hotspots");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[Heatmap] Error: {ex.Message}");
+                ReliabilityMessage = $"Heatmap error: {ex.Message}";
+            }
         }
     }
 }

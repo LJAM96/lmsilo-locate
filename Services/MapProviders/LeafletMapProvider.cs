@@ -1,8 +1,11 @@
+using GeoLens.Models;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Web.WebView2.Core;
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace GeoLens.Services.MapProviders
@@ -211,6 +214,127 @@ namespace GeoLens.Services.MapProviders
             {
                 Debug.WriteLine($"[LeafletMap] ERROR setting heatmap mode: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Show a heatmap visualization from multiple image predictions
+        /// </summary>
+        public async Task ShowHeatmapAsync(HeatmapData heatmap)
+        {
+            if (!_isInitialized) return;
+
+            try
+            {
+                // Convert HeatmapData to JSON for JavaScript
+                var heatmapJson = SerializeHeatmapData(heatmap);
+
+                // Call JavaScript function with JSON data
+                string script = $"mapAPI.showHeatmap({heatmapJson})";
+                await ExecuteScriptAsync(script);
+
+                Debug.WriteLine($"[LeafletMap] Showed heatmap: {heatmap.ImageCount} images, {heatmap.TotalPredictions} predictions, {heatmap.Hotspots.Count} hotspots");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[LeafletMap] ERROR showing heatmap: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Hide the current heatmap visualization
+        /// </summary>
+        public async Task HideHeatmapAsync()
+        {
+            if (!_isInitialized) return;
+
+            try
+            {
+                await ExecuteScriptAsync("mapAPI.hideHeatmap()");
+                Debug.WriteLine("[LeafletMap] Hid heatmap");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[LeafletMap] ERROR hiding heatmap: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Toggle between heatmap and individual pins mode
+        /// </summary>
+        public async Task ToggleHeatmapModeAsync(bool showHeatmap)
+        {
+            if (!_isInitialized) return;
+
+            try
+            {
+                string script = $"mapAPI.toggleHeatmapMode({showHeatmap.ToString().ToLower()})";
+                await ExecuteScriptAsync(script);
+
+                Debug.WriteLine($"[LeafletMap] Toggled heatmap mode: {showHeatmap}");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[LeafletMap] ERROR toggling heatmap mode: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Serialize HeatmapData to JSON for JavaScript consumption
+        /// </summary>
+        private string SerializeHeatmapData(HeatmapData heatmap)
+        {
+            // Convert 2D grid to flat array format for JavaScript
+            var gridPoints = new System.Collections.Generic.List<object>();
+
+            for (int x = 0; x < heatmap.Width; x++)
+            {
+                for (int y = 0; y < heatmap.Height; y++)
+                {
+                    double intensity = heatmap.IntensityGrid[x, y];
+
+                    // Only include cells with significant intensity (> 10%)
+                    if (intensity > 0.1)
+                    {
+                        double lon = x - 180;
+                        double lat = 90 - y;
+
+                        gridPoints.Add(new
+                        {
+                            lat = lat,
+                            lng = lon,
+                            intensity = intensity
+                        });
+                    }
+                }
+            }
+
+            // Build JSON object
+            var jsonObject = new
+            {
+                width = heatmap.Width,
+                height = heatmap.Height,
+                resolution = heatmap.Resolution,
+                gridPoints = gridPoints,
+                hotspots = heatmap.Hotspots.Select(h => new
+                {
+                    lat = h.Latitude,
+                    lng = h.Longitude,
+                    intensity = h.Intensity,
+                    radiusKm = h.RadiusKm,
+                    predictionCount = h.PredictionCount,
+                    locationName = h.LocationName ?? "Unknown"
+                }).ToArray(),
+                statistics = new
+                {
+                    totalPredictions = heatmap.TotalPredictions,
+                    imageCount = heatmap.ImageCount,
+                    exifCount = heatmap.Statistics.ExifCount,
+                    aiCount = heatmap.Statistics.AiCount,
+                    coverageAreaKm2 = heatmap.Statistics.CoverageAreaKm2
+                }
+            };
+
+            return JsonSerializer.Serialize(jsonObject);
         }
 
         /// <summary>

@@ -1,3 +1,4 @@
+using GeoLens.Models;
 using System.Threading.Tasks;
 
 namespace GeoLens.Services.MapProviders
@@ -40,6 +41,23 @@ namespace GeoLens.Services.MapProviders
         /// Enable or disable heatmap visualization mode
         /// </summary>
         Task SetHeatmapModeAsync(bool enabled);
+
+        /// <summary>
+        /// Show a heatmap visualization from multiple image predictions
+        /// </summary>
+        /// <param name="heatmap">Heatmap data to visualize</param>
+        Task ShowHeatmapAsync(HeatmapData heatmap);
+
+        /// <summary>
+        /// Hide the current heatmap visualization
+        /// </summary>
+        Task HideHeatmapAsync();
+
+        /// <summary>
+        /// Toggle between heatmap and individual pins mode
+        /// </summary>
+        /// <param name="showHeatmap">True to show heatmap, false to show pins</param>
+        Task ToggleHeatmapModeAsync(bool showHeatmap);
 
         /// <summary>
         /// Check if the provider is ready to use
