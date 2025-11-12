@@ -88,13 +88,11 @@
     function initAllMaps() {
         console.log('Starting map initialization...');
 
-        // Wait for all libraries to load
+        // Wait for all libraries to load, then initialize only the first visible map
         setTimeout(() => {
+            // Only initialize the first tab (globe-gl) which is visible
             initGlobeGL();
-            initLeaflet();
-            initMapLibre2D();
-            initMapLibre3D();
-            initCesium();
+            // Others will be initialized when their tabs are clicked
         }, 500);
     }
 
@@ -301,30 +299,76 @@
         });
         document.getElementById(`tab-${tabName}`).classList.add('active');
 
-        // Resize map on tab switch
-        setTimeout(() => {
-            if (tabName === 'leaflet' && state.maps.leaflet) {
-                state.maps.leaflet.invalidateSize();
-            }
-            if (tabName === 'globe-gl' && state.maps.globegl) {
-                const container = document.getElementById('map-globe-gl');
-                state.maps.globegl.width(container.offsetWidth);
-                state.maps.globegl.height(container.offsetHeight);
-            }
-            if (tabName === 'maplibre-2d' && state.maps.maplibre2d) {
-                state.maps.maplibre2d.resize();
-            }
-            if (tabName === 'maplibre-3d' && state.maps.maplibre3d) {
-                state.maps.maplibre3d.resize();
-            }
-            if (tabName === 'cesium' && state.maps.cesium) {
-                state.maps.cesium.resize();
-            }
-        }, 100);
+        // Lazy initialize maps when their tab is first opened
+        let isLazyInit = false;
+        if (tabName === 'leaflet' && !state.maps.leaflet) {
+            console.log('Lazy initializing Leaflet...');
+            isLazyInit = true;
+            setTimeout(() => {
+                initLeaflet();
+                // Re-display predictions after initialization
+                if (state.predictions.length > 0) {
+                    setTimeout(() => displayPredictionsOnMap('leaflet', state.predictions), 500);
+                }
+            }, 100);
+        } else if (tabName === 'maplibre-2d' && !state.maps.maplibre2d) {
+            console.log('Lazy initializing MapLibre 2D...');
+            isLazyInit = true;
+            setTimeout(() => {
+                initMapLibre2D();
+                // Re-display predictions after initialization
+                if (state.predictions.length > 0) {
+                    setTimeout(() => displayPredictionsOnMap('maplibre-2d', state.predictions), 500);
+                }
+            }, 100);
+        } else if (tabName === 'maplibre-3d' && !state.maps.maplibre3d) {
+            console.log('Lazy initializing MapLibre 3D...');
+            isLazyInit = true;
+            setTimeout(() => {
+                initMapLibre3D();
+                // Re-display predictions after initialization
+                if (state.predictions.length > 0) {
+                    setTimeout(() => displayPredictionsOnMap('maplibre-3d', state.predictions), 500);
+                }
+            }, 100);
+        } else if (tabName === 'cesium' && !state.maps.cesium) {
+            console.log('Lazy initializing Cesium...');
+            isLazyInit = true;
+            setTimeout(() => {
+                initCesium();
+                // Re-display predictions after initialization
+                if (state.predictions.length > 0) {
+                    setTimeout(() => displayPredictionsOnMap('cesium', state.predictions), 500);
+                }
+            }, 100);
+        }
 
-        // Re-display predictions on new map
-        if (state.predictions.length > 0) {
-            displayPredictionsOnMap(tabName, state.predictions);
+        // Resize map on tab switch (only if already initialized)
+        if (!isLazyInit) {
+            setTimeout(() => {
+                if (tabName === 'leaflet' && state.maps.leaflet) {
+                    state.maps.leaflet.invalidateSize();
+                }
+                if (tabName === 'globe-gl' && state.maps.globegl) {
+                    const container = document.getElementById('map-globe-gl');
+                    state.maps.globegl.width(container.offsetWidth);
+                    state.maps.globegl.height(container.offsetHeight);
+                }
+                if (tabName === 'maplibre-2d' && state.maps.maplibre2d) {
+                    state.maps.maplibre2d.resize();
+                }
+                if (tabName === 'maplibre-3d' && state.maps.maplibre3d) {
+                    state.maps.maplibre3d.resize();
+                }
+                if (tabName === 'cesium' && state.maps.cesium) {
+                    state.maps.cesium.resize();
+                }
+            }, 100);
+
+            // Re-display predictions on new map
+            if (state.predictions.length > 0) {
+                setTimeout(() => displayPredictionsOnMap(tabName, state.predictions), 200);
+            }
         }
     }
 
@@ -503,12 +547,8 @@
             });
         });
 
-        // Display on all maps
-        displayPredictionsOnMap('globe-gl', predictions);
-        displayPredictionsOnMap('leaflet', predictions);
-        displayPredictionsOnMap('maplibre-2d', predictions);
-        displayPredictionsOnMap('maplibre-3d', predictions);
-        displayPredictionsOnMap('cesium', predictions);
+        // Display on currently active map only (others will load when tab is clicked)
+        displayPredictionsOnMap(state.currentTab, predictions);
     }
 
     // Display predictions on specific map
