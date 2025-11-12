@@ -74,30 +74,47 @@
     function initGlobe3D() {
         const container = document.getElementById('globe3d');
 
-        state.globe3d = Globe()
-            (container)
-            .globeImageUrl('https://unpkg.com/three-globe@2.30.0/example/img/earth-blue-marble.jpg')
-            .bumpImageUrl('https://unpkg.com/three-globe@2.30.0/example/img/earth-topology.png')
-            .backgroundImageUrl('https://unpkg.com/three-globe@2.30.0/example/img/night-sky.png')
-            .backgroundColor('rgba(0,0,0,0)')
-            .pointsData([])
-            .pointAltitude(0.01)
-            .pointRadius(0.5)
-            .pointColor(d => d.color)
-            .pointLabel(d => d.label)
-            .onPointClick(d => {
-                if (d.onClick) d.onClick();
-            })
-            .atmosphereColor('#00d4ff')
-            .atmosphereAltitude(0.15);
+        try {
+            // Check if Globe is available
+            if (typeof Globe === 'undefined') {
+                console.error('Globe.gl library not loaded');
+                return;
+            }
 
-        // Rotate globe slowly
-        state.globe3d.controls().autoRotate = true;
-        state.globe3d.controls().autoRotateSpeed = 0.5;
+            state.globe3d = Globe()
+                (container)
+                .globeImageUrl('https://unpkg.com/three-globe@2.30.0/example/img/earth-blue-marble.jpg')
+                .bumpImageUrl('https://unpkg.com/three-globe@2.30.0/example/img/earth-topology.png')
+                .backgroundImageUrl('https://unpkg.com/three-globe@2.30.0/example/img/night-sky.png')
+                .backgroundColor('rgba(0,0,0,0)')
+                .pointsData([])
+                .pointAltitude(0.01)
+                .pointRadius(0.5)
+                .pointColor(d => d.color)
+                .pointLabel(d => d.label)
+                .onPointClick(d => {
+                    if (d.onClick) d.onClick();
+                })
+                .atmosphereColor('#00d4ff')
+                .atmosphereAltitude(0.15);
+
+            // Set size explicitly
+            state.globe3d.width(container.offsetWidth);
+            state.globe3d.height(container.offsetHeight);
+
+            // Rotate globe slowly
+            state.globe3d.controls().autoRotate = true;
+            state.globe3d.controls().autoRotateSpeed = 0.5;
+
+            console.log('3D Globe initialized successfully');
+        } catch (error) {
+            console.error('Failed to initialize 3D globe:', error);
+        }
     }
 
     // Switch between 2D and 3D views
     function switchView(view) {
+        console.log('Switching to view:', view);
         state.currentView = view;
 
         // Update button states
@@ -116,6 +133,15 @@
             setTimeout(() => state.map2d.invalidateSize(), 100);
         } else {
             document.getElementById('globe3d').classList.add('active');
+
+            // Resize globe if it exists
+            if (state.globe3d) {
+                const container = document.getElementById('globe3d');
+                setTimeout(() => {
+                    state.globe3d.width(container.offsetWidth);
+                    state.globe3d.height(container.offsetHeight);
+                }, 100);
+            }
         }
     }
 
