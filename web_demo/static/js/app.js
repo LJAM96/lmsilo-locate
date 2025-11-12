@@ -129,6 +129,19 @@
             state.maps.globegl.controls().autoRotate = true;
             state.maps.globegl.controls().autoRotateSpeed = 0.5;
 
+            // Force explicit sizing
+            setTimeout(() => {
+                const width = container.offsetWidth;
+                const height = container.offsetHeight;
+                console.log('Globe.GL container size:', width, 'x', height);
+                if (width > 0 && height > 0) {
+                    state.maps.globegl.width(width);
+                    state.maps.globegl.height(height);
+                } else {
+                    console.error('Globe.GL container has zero dimensions!');
+                }
+            }, 100);
+
             console.log('Globe.GL initialized successfully');
         } catch (error) {
             console.error('Failed to initialize Globe.GL:', error);
@@ -169,6 +182,7 @@
             }
 
             console.log('Initializing Leaflet on container:', container);
+            console.log('Leaflet container dimensions:', container.offsetWidth, 'x', container.offsetHeight);
 
             state.maps.leaflet = L.map(container, {
                 center: [20, 0],
@@ -183,6 +197,12 @@
                 subdomains: 'abcd',
                 maxZoom: 20
             }).addTo(state.maps.leaflet);
+
+            // Force invalidate size after a moment
+            setTimeout(() => {
+                state.maps.leaflet.invalidateSize();
+                console.log('Leaflet size invalidated, new dimensions:', container.offsetWidth, 'x', container.offsetHeight);
+            }, 200);
 
             console.log('Leaflet initialized successfully');
         } catch (error) {
