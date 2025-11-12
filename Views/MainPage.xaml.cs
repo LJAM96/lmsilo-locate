@@ -380,6 +380,21 @@ namespace GeoLens.Views
 
                 ReliabilityMessage = "Processing images...";
 
+                // Extract EXIF data first
+                var exifExtractor = new Services.ExifMetadataExtractor();
+                var exifData = new Dictionary<string, ExifGpsData?>();
+
+                foreach (var item in queuedImages)
+                {
+                    var gpsData = await exifExtractor.ExtractGpsDataAsync(item.FilePath);
+                    exifData[item.FilePath] = gpsData;
+
+                    if (gpsData?.HasGps == true)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[ProcessImages] Found GPS in {Path.GetFileName(item.FilePath)}: {gpsData.Latitude:F6}, {gpsData.Longitude:F6}");
+                    }
+                }
+
                 // Call API for predictions
                 var imagePaths = queuedImages.Select(i => i.FilePath).ToList();
                 var response = await App.ApiClient.InferBatchAsync(imagePaths, topK: 5);
@@ -397,7 +412,8 @@ namespace GeoLens.Views
                         // Display predictions for first image (or selected image)
                         if (imageItem == queuedImages.First())
                         {
-                            DisplayPredictions(result);
+                            var gps = exifData.ContainsKey(result.Path) ? exifData[result.Path] : null;
+                            await DisplayPredictionsAsync(result, gps);
                         }
                     }
                 }
@@ -418,7 +434,7 @@ namespace GeoLens.Views
             }
         }
 
-        private async void DisplayPredictions(Services.DTOs.PredictionResult result)
+        private async Task DisplayPredictionsAsync(Services.DTOs.PredictionResult result, ExifGpsData? exifGps)
         {
             // Clear existing predictions
             Predictions.Clear();
@@ -429,6 +445,53 @@ namespace GeoLens.Views
                 await _mapProvider.ClearPinsAsync();
             }
 
+            // Show EXIF GPS if available
+            if (exifGps?.HasGps == true)
+            {
+                HasExifGps = true;
+                ExifLocationName = exifGps.LocationName ?? "GPS Location from Image";
+                ExifLat = exifGps.LatitudeFormatted;
+                ExifLon = exifGps.LongitudeFormatted;
+
+                // Add EXIF GPS as a prediction (with VeryHigh confidence)
+                var exifPrediction = new EnhancedLocationPrediction
+                {
+                    Rank = 0, // Special rank for EXIF
+                    Latitude = exifGps.Latitude,
+                    Longitude = exifGps.Longitude,
+                    Probability = 1.0,
+                    AdjustedProbability = 1.0,
+                    City = "",
+                    State = "",
+                    Country = "",
+                    LocationSummary = "EXIF GPS Data",
+                    IsPartOfCluster = false,
+                    ConfidenceLevel = ConfidenceLevel.VeryHigh
+                };
+
+                Predictions.Add(exifPrediction);
+
+                // Add EXIF marker to map (cyan, special styling)
+                if (_mapProvider != null && _mapProvider.IsReady)
+                {
+                    await _mapProvider.AddPinAsync(
+                        exifGps.Latitude,
+                        exifGps.Longitude,
+                        "EXIF GPS Location",
+                        1.0,
+                        0,
+                        isExif: true
+                    );
+                }
+
+                ReliabilityMessage = "GPS coordinates found in image metadata - highest reliability";
+            }
+            else
+            {
+                HasExifGps = false;
+            }
+
+            // Add AI predictions
             if (result.Predictions != null)
             {
                 for (int i = 0; i < result.Predictions.Count; i++)
@@ -466,14 +529,17 @@ namespace GeoLens.Views
                     }
                 }
 
-                // Rotate to first prediction
+                // Rotate to first location (EXIF if available, otherwise first AI prediction)
                 if (Predictions.Count > 0 && _mapProvider != null && _mapProvider.IsReady)
                 {
                     var first = Predictions[0];
                     await _mapProvider.RotateToLocationAsync(first.Latitude, first.Longitude, 1500);
                 }
 
-                ReliabilityMessage = $"Showing {Predictions.Count} predictions";
+                if (!HasExifGps)
+                {
+                    ReliabilityMessage = $"Showing {result.Predictions.Count} AI predictions";
+                }
             }
         }
 
