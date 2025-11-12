@@ -13,6 +13,7 @@ namespace GeoLens
     {
         private Window? _mainWindow;
         private static Window? _settingsWindow;
+        private Views.LoadingPage? _loadingPage;
         public static Window? MainWindow { get; private set; }
         public new static App Current => (App)Application.Current;
 
@@ -30,46 +31,75 @@ namespace GeoLens
         {
             _mainWindow ??= new Window
             {
-                Title = "GeoLens - Initializing..."
+                Title = "GeoLens"
             };
 
-            // Show loading UI
+            // Create and show loading page
+            _loadingPage = new Views.LoadingPage();
+            _loadingPage.RetryRequested += LoadingPage_RetryRequested;
+            _loadingPage.ExitRequested += LoadingPage_ExitRequested;
+
             var loadingFrame = new Frame { RequestedTheme = ElementTheme.Dark };
+            loadingFrame.Content = _loadingPage;
             _mainWindow.Content = loadingFrame;
             _mainWindow.Activate();
             MainWindow = _mainWindow;
 
-            // Initialize services in background
-            bool servicesStarted = await InitializeServicesAsync();
+            // Start rotating tips
+            _ = _loadingPage.RotateTipsAsync();
+
+            // Initialize services with progress reporting
+            bool servicesStarted = await InitializeServicesWithProgressAsync();
 
             if (servicesStarted)
             {
                 // Services ready - navigate to main page
-                _mainWindow.Title = "GeoLens";
                 var frame = new Frame { RequestedTheme = ElementTheme.Dark };
                 frame.NavigationFailed += OnNavigationFailed;
                 _mainWindow.Content = frame;
                 frame.Navigate(typeof(Views.MainPage), args.Arguments);
             }
-            else
+            // If failed, error is shown in loading page with retry option
+        }
+
+        private async void LoadingPage_RetryRequested(object? sender, EventArgs e)
+        {
+            bool servicesStarted = await InitializeServicesWithProgressAsync();
+            if (servicesStarted)
             {
-                // Failed to start - show error
-                await ShowServiceErrorDialog();
-                _mainWindow.Close();
+                var frame = new Frame { RequestedTheme = ElementTheme.Dark };
+                frame.NavigationFailed += OnNavigationFailed;
+                _mainWindow!.Content = frame;
+                frame.Navigate(typeof(Views.MainPage), null);
             }
         }
 
-        private async Task<bool> InitializeServicesAsync()
+        private void LoadingPage_ExitRequested(object? sender, EventArgs e)
+        {
+            _mainWindow?.Close();
+        }
+
+        private async Task<bool> InitializeServicesWithProgressAsync()
         {
             try
             {
-                // 1. Detect hardware
+                // Stage 1: Detect hardware (5% progress)
+                _loadingPage?.UpdateStatus("Detecting hardware...");
+                _loadingPage?.UpdateProgress(5);
+                await Task.Delay(50); // Small delay to ensure UI updates
+
                 Debug.WriteLine("[App] Detecting hardware...");
                 var hardwareService = new HardwareDetectionService();
                 DetectedHardware = hardwareService.DetectHardware();
                 Debug.WriteLine($"[App] Detected: {DetectedHardware.Description}");
 
-                // 2. Determine runtime path
+                _loadingPage?.UpdateSubStatus(DetectedHardware.Description);
+                await Task.Delay(100);
+
+                // Stage 2: Determine runtime path (10% progress)
+                _loadingPage?.UpdateStatus("Locating Python runtime...");
+                _loadingPage?.UpdateProgress(10);
+
                 string appDir = AppContext.BaseDirectory;
                 string runtimePath;
 
@@ -78,16 +108,15 @@ namespace GeoLens
                 {
                     Debug.WriteLine("[App] Development mode - checking for conda environment");
 
-                    // Check for CONDA_PREFIX environment variable (set when conda env is active)
                     var condaPrefix = Environment.GetEnvironmentVariable("CONDA_PREFIX");
                     if (!string.IsNullOrEmpty(condaPrefix))
                     {
                         runtimePath = Path.Combine(condaPrefix, "python.exe");
                         Debug.WriteLine($"[App] Using conda environment: {runtimePath}");
+                        _loadingPage?.UpdateSubStatus("Using active conda environment");
                     }
                     else
                     {
-                        // Try to find geolens conda environment
                         var condaRoot = Environment.GetEnvironmentVariable("CONDA_ROOT")
                                      ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "miniconda3");
                         var geolensEnvPath = Path.Combine(condaRoot, "envs", "geolens", "python.exe");
@@ -96,11 +125,13 @@ namespace GeoLens
                         {
                             runtimePath = geolensEnvPath;
                             Debug.WriteLine($"[App] Found geolens conda environment: {runtimePath}");
+                            _loadingPage?.UpdateSubStatus("Using geolens conda environment");
                         }
                         else
                         {
-                            runtimePath = "python"; // Fallback to system Python
+                            runtimePath = "python";
                             Debug.WriteLine("[App] Using system Python (conda env not found)");
+                            _loadingPage?.UpdateSubStatus("Using system Python");
                         }
                     }
                 }
@@ -115,29 +146,72 @@ namespace GeoLens
                     };
 
                     runtimePath = Path.Combine(appDir, "Runtimes", runtimeFolder, "python.exe");
+                    _loadingPage?.UpdateSubStatus($"Using embedded runtime: {runtimeFolder}");
 
                     if (!File.Exists(runtimePath))
                     {
                         Debug.WriteLine($"[App] WARNING: Embedded runtime not found: {runtimePath}");
                         Debug.WriteLine("[App] Falling back to system Python");
                         runtimePath = "python";
+                        _loadingPage?.UpdateSubStatus("Embedded runtime not found, using system Python");
                     }
                 }
 
-                // 3. Start Python service (includes health check)
+                await Task.Delay(100);
+
+                // Stage 3: Start Python service (15-90% progress)
+                _loadingPage?.UpdateStatus("Starting AI service...");
+                _loadingPage?.UpdateProgress(15);
+                _loadingPage?.UpdateSubStatus("This may take a few moments...");
+
                 Debug.WriteLine($"[App] Starting Python service with runtime: {runtimePath}");
                 PythonManager = new PythonRuntimeManager(runtimePath, port: 8899);
-                bool serviceStarted = await PythonManager.StartAsync(DetectedHardware.DeviceChoice);
+
+                // Start with progress updates
+                var progressReporter = new Progress<int>(percentage =>
+                {
+                    _loadingPage?.UpdateProgress(15 + (percentage * 0.75)); // Map 0-100 to 15-90
+                    if (percentage < 30)
+                        _loadingPage?.UpdateSubStatus("Launching Python process...");
+                    else if (percentage < 70)
+                        _loadingPage?.UpdateSubStatus("Waiting for service to respond...");
+                    else
+                        _loadingPage?.UpdateSubStatus("Verifying service health...");
+                });
+
+                bool serviceStarted = await PythonManager.StartAsync(
+                    DetectedHardware.DeviceChoice,
+                    progressReporter);
 
                 if (!serviceStarted)
                 {
                     Debug.WriteLine("[App] ERROR: Service failed to start or health check failed");
+
+                    _loadingPage?.ShowError(
+                        "Failed to start the AI service. Please check:\n\n" +
+                        "• Python 3.11+ is installed (development mode)\n" +
+                        "• Required packages are installed\n" +
+                        "• Port 8899 is not already in use\n" +
+                        "• No firewall blocking localhost:8899",
+                        showRetry: true);
+
                     return false;
                 }
 
-                // 5. Initialize API client
+                // Stage 4: Initialize API client (95% progress)
+                _loadingPage?.UpdateStatus("Initializing API client...");
+                _loadingPage?.UpdateProgress(95);
+                _loadingPage?.UpdateSubStatus("");
+
                 ApiClient = new GeoCLIPApiClient(PythonManager.BaseUrl);
                 Debug.WriteLine("[App] Services initialized successfully");
+
+                await Task.Delay(200);
+
+                // Stage 5: Complete (100% progress)
+                _loadingPage?.UpdateStatus("Ready!");
+                _loadingPage?.UpdateProgress(100);
+                await Task.Delay(300);
 
                 return true;
             }
@@ -145,35 +219,14 @@ namespace GeoLens
             {
                 Debug.WriteLine($"[App] ERROR initializing services: {ex.Message}");
                 Debug.WriteLine($"[App] Stack trace: {ex.StackTrace}");
+
+                _loadingPage?.ShowError(
+                    $"Unexpected error during initialization:\n\n{ex.Message}\n\n" +
+                    "Please check the debug output for details.",
+                    showRetry: true);
+
                 return false;
             }
-        }
-
-        private async Task ShowServiceErrorDialog()
-        {
-            // Ensure window has a XamlRoot by waiting a moment for rendering
-            await Task.Delay(100);
-
-            // Check if XamlRoot is available
-            if (_mainWindow?.Content?.XamlRoot == null)
-            {
-                Debug.WriteLine("[App] Cannot show error dialog - XamlRoot not available");
-                return;
-            }
-
-            var dialog = new ContentDialog
-            {
-                Title = "Startup Error",
-                Content = "Failed to start the AI service. Please ensure:\n\n" +
-                          "• Python 3.11+ is installed (dev mode)\n" +
-                          "• Required packages are installed\n" +
-                          "• Port 8899 is not in use\n\n" +
-                          "Check the debug output for details.",
-                CloseButtonText = "Exit",
-                XamlRoot = _mainWindow.Content.XamlRoot
-            };
-
-            await dialog.ShowAsync();
         }
 
         public static void ShowSettingsWindow()

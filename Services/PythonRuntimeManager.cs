@@ -57,13 +57,19 @@ namespace GeoLens.Services
         /// <summary>
         /// Start the Python FastAPI service
         /// </summary>
-        public async Task<bool> StartAsync(string device = "auto", CancellationToken cancellationToken = default)
+        public async Task<bool> StartAsync(
+            string device = "auto",
+            IProgress<int>? progress = null,
+            CancellationToken cancellationToken = default)
         {
             if (IsRunning)
             {
                 Debug.WriteLine("Python service is already running");
+                progress?.Report(100);
                 return true;
             }
+
+            progress?.Report(0);
 
             // Verify Python executable exists
             if (!CanFindPython())
@@ -72,12 +78,16 @@ namespace GeoLens.Services
                 return false;
             }
 
+            progress?.Report(10);
+
             // Verify api_service.py exists
             if (!File.Exists(_apiServiceScript))
             {
                 Debug.WriteLine($"API service script not found: {_apiServiceScript}");
                 return false;
             }
+
+            progress?.Report(20);
 
             try
             {
@@ -121,14 +131,19 @@ namespace GeoLens.Services
                     }
                 };
 
+                progress?.Report(30);
+
                 _pythonProcess.Start();
                 _pythonProcess.BeginOutputReadLine();
                 _pythonProcess.BeginErrorReadLine();
 
                 Debug.WriteLine($"Python service starting on {BaseUrl}...");
 
-                // Wait for service to be ready (health check)
-                return await WaitForHealthyAsync(TimeSpan.FromSeconds(30), cancellationToken);
+                progress?.Report(40);
+
+                // Wait for service to be ready (health check with reduced timeout)
+                // Reduced from 30s to 15s - typical startup is 3-5 seconds
+                return await WaitForHealthyAsync(TimeSpan.FromSeconds(15), cancellationToken, progress);
             }
             catch (Exception ex)
             {
@@ -140,18 +155,29 @@ namespace GeoLens.Services
         /// <summary>
         /// Wait for the service to become healthy
         /// </summary>
-        private async Task<bool> WaitForHealthyAsync(TimeSpan timeout, CancellationToken cancellationToken)
+        private async Task<bool> WaitForHealthyAsync(
+            TimeSpan timeout,
+            CancellationToken cancellationToken,
+            IProgress<int>? progress = null)
         {
-            var endTime = DateTime.UtcNow + timeout;
+            var startTime = DateTime.UtcNow;
+            var endTime = startTime + timeout;
             var retryDelay = TimeSpan.FromMilliseconds(500);
+            var totalSeconds = timeout.TotalSeconds;
 
             while (DateTime.UtcNow < endTime && !cancellationToken.IsCancellationRequested)
             {
                 if (await CheckHealthAsync(cancellationToken))
                 {
                     Debug.WriteLine("Python service is healthy");
+                    progress?.Report(100);
                     return true;
                 }
+
+                // Report progress (map time elapsed to 40-100% range)
+                var elapsed = (DateTime.UtcNow - startTime).TotalSeconds;
+                var percentage = 40 + (int)((elapsed / totalSeconds) * 60);
+                progress?.Report(Math.Min(percentage, 99)); // Cap at 99 until actually healthy
 
                 await Task.Delay(retryDelay, cancellationToken);
             }
