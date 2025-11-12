@@ -164,6 +164,25 @@
                 box-shadow: 0 2px 16px rgba(255, 255, 255, 0.4);
             }
         }
+
+        /* Offline mode indicator */
+        .offline-indicator {
+            position: absolute;
+            bottom: 32px;
+            left: 10px;
+            background: rgba(255, 153, 0, 0.9);
+            color: #000;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            z-index: 1000;
+            display: none;
+        }
+
+        .offline-indicator.active {
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -172,6 +191,7 @@
         <div>Initializing Map...</div>
     </div>
     <div id="map"></div>
+    <div id="offlineIndicator" class="offline-indicator">Using Offline Tiles</div>
 
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
@@ -181,48 +201,76 @@
     <script>
         // Configuration
         const config = {
-            mode: 'auto', // 'online' or 'offline'
+            mode: 'hybrid', // 'online', 'offline', or 'hybrid' (default)
             defaultZoom: 2,
             minZoom: 2,
             maxZoom: 18,
             centerLat: 20,
-            centerLng: 0
+            centerLng: 0,
+            offlineFallbackZoom: 8 // Maximum zoom for bundled offline tiles
         };
 
         // Global state
         let map = null;
         let markers = [];
         let markerLayer = null;
+        let onlineTileLayer = null;
+        let offlineTileLayer = null;
+        let usingOfflineFallback = false;
 
-        // Dark tile layer providers (with fallbacks)
+        // Dark tile layer providers
         const tileProviders = {
-            // CartoDB Dark Matter (free, no API key required)
-            cartodb: {
+            // CartoDB Dark Matter (free, high quality, zoom 0-19)
+            online: {
                 url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
                 attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
                 maxZoom: 19,
                 subdomains: 'abcd'
             },
-            // Stadia Dark (alternative, may need API key for production)
-            stadia: {
-                url: 'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png',
-                attribution: '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a> &copy; <a href="http://openstreetmap.org">OpenStreetMap</a> contributors',
-                maxZoom: 20
-            },
-            // Offline tiles (local .mbtiles or tile directory)
+            // Bundled offline tiles (zoom 0-8, minimal quality for fallback)
             offline: {
                 url: './tiles/{z}/{x}/{y}.png',
                 attribution: 'Offline Map Data',
-                maxZoom: 18
+                maxZoom: 8, // Only low zoom levels bundled
+                errorTileUrl: '' // Don't show missing tile image
             }
         };
+
+        // Custom tile layer with fallback support
+        const HybridTileLayer = L.TileLayer.extend({
+            createTile: function (coords, done) {
+                const tile = document.createElement('img');
+                const url = this.getTileUrl(coords);
+
+                tile.onload = () => done(null, tile);
+                tile.onerror = () => {
+                    // If online tile fails and we have offline tiles for this zoom level
+                    if (this._isOnlineLayer && coords.z <= config.offlineFallbackZoom) {
+                        const offlineUrl = tileProviders.offline.url
+                            .replace('{z}', coords.z)
+                            .replace('{x}', coords.x)
+                            .replace('{y}', coords.y);
+
+                        tile.src = offlineUrl;
+
+                        if (!usingOfflineFallback) {
+                            usingOfflineFallback = true;
+                            document.getElementById('offlineIndicator').classList.add('active');
+                            console.log('Falling back to offline tiles');
+                        }
+                    } else {
+                        done(null, tile); // Show broken tile or blank
+                    }
+                };
+
+                tile.src = url;
+                return tile;
+            }
+        });
 
         // Initialize the map
         function initMap() {
             try {
-                // Determine which tile provider to use
-                const provider = config.mode === 'offline' ? tileProviders.offline : tileProviders.cartodb;
-
                 // Create map instance
                 map = L.map('map', {
                     center: [config.centerLat, config.centerLng],
@@ -233,13 +281,39 @@
                     attributionControl: true
                 });
 
-                // Add tile layer
-                L.tileLayer(provider.url, {
-                    attribution: provider.attribution,
-                    maxZoom: provider.maxZoom,
-                    subdomains: provider.subdomains || '',
-                    crossOrigin: true
-                }).addTo(map);
+                // Determine which mode to use
+                if (config.mode === 'offline') {
+                    // Offline only mode
+                    offlineTileLayer = L.tileLayer(tileProviders.offline.url, {
+                        attribution: tileProviders.offline.attribution,
+                        maxZoom: tileProviders.offline.maxZoom,
+                        errorTileUrl: tileProviders.offline.errorTileUrl
+                    }).addTo(map);
+
+                    document.getElementById('offlineIndicator').classList.add('active');
+                    console.log('Map initialized in offline mode');
+                } else if (config.mode === 'online') {
+                    // Online only mode
+                    onlineTileLayer = L.tileLayer(tileProviders.online.url, {
+                        attribution: tileProviders.online.attribution,
+                        maxZoom: tileProviders.online.maxZoom,
+                        subdomains: tileProviders.online.subdomains,
+                        crossOrigin: true
+                    }).addTo(map);
+
+                    console.log('Map initialized in online mode');
+                } else {
+                    // Hybrid mode (default): try online, fallback to offline
+                    onlineTileLayer = new HybridTileLayer(tileProviders.online.url, {
+                        attribution: tileProviders.online.attribution,
+                        maxZoom: tileProviders.online.maxZoom,
+                        subdomains: tileProviders.online.subdomains,
+                        crossOrigin: true,
+                        _isOnlineLayer: true
+                    }).addTo(map);
+
+                    console.log('Map initialized in hybrid mode (online with offline fallback)');
+                }
 
                 // Create marker layer group
                 markerLayer = L.layerGroup().addTo(map);
@@ -366,7 +440,7 @@
             console.log('Fitted map to markers');
         }
 
-        // Set map mode (online/offline)
+        // Set map mode (online/offline/hybrid)
         function setMapMode(mode) {
             config.mode = mode;
             console.log('Map mode set to:', mode);
@@ -390,7 +464,8 @@
             fitToMarkers: fitToMarkers,
             setMapMode: setMapMode,
             setHeatmapMode: setHeatmapMode,
-            isReady: () => map !== null
+            isReady: () => map !== null,
+            isUsingOffline: () => usingOfflineFallback
         };
 
         // Initialize on load
