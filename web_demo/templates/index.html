@@ -3,28 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GeoLens - Map Visualization Demo</title>
+    <title>GeoLens - Map Library Comparison</title>
 
-    <!-- Leaflet CSS for 2D maps -->
+    <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <!-- MapLibre CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" />
+
+    <!-- Cesium CSS -->
+    <link rel="stylesheet" href="https://cesium.com/downloads/cesiumjs/releases/1.111/Build/Cesium/Widgets/widgets.css" />
 
     <!-- Custom CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-
-    <!-- Leaflet JS -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-    <!-- Globe.gl for 3D globe -->
-    <script src="https://unpkg.com/globe.gl@2.31.0/dist/globe.gl.min.js"></script>
-
-    <!-- Three.js (required for globe.gl) -->
-    <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
 </head>
 <body>
     <div class="container">
         <!-- Header -->
         <header class="header">
-            <h1>🌍 GeoLens Map Visualization Demo</h1>
+            <div>
+                <h1>🌍 GeoLens Map Library Comparison</h1>
+                <p class="subtitle">Compare different mapping technologies for the GeoLens desktop app</p>
+            </div>
             <div class="status" id="backendStatus">
                 <span class="status-indicator" id="statusDot"></span>
                 <span id="statusText">Checking backend...</span>
@@ -74,17 +74,109 @@
 
             <!-- Main Map Area -->
             <main class="map-container">
-                <!-- View Toggle -->
-                <div class="view-toggle">
-                    <button class="toggle-btn active" data-view="2d">2D Map</button>
-                    <button class="toggle-btn" data-view="3d">3D Globe</button>
+                <!-- Tab Navigation -->
+                <nav class="tab-nav">
+                    <button class="tab-btn active" data-tab="globe-gl">
+                        <strong>Globe.GL + NASA</strong>
+                        <span class="tab-size">51MB</span>
+                    </button>
+                    <button class="tab-btn recommended" data-tab="leaflet">
+                        <strong>Leaflet 2D</strong>
+                        <span class="tab-size">500MB ⭐</span>
+                    </button>
+                    <button class="tab-btn" data-tab="maplibre-2d">
+                        <strong>MapLibre 2D</strong>
+                        <span class="tab-size">Vector</span>
+                    </button>
+                    <button class="tab-btn" data-tab="maplibre-3d">
+                        <strong>MapLibre 3D</strong>
+                        <span class="tab-size">Globe</span>
+                    </button>
+                    <button class="tab-btn" data-tab="cesium">
+                        <strong>Cesium</strong>
+                        <span class="tab-size">150MB</span>
+                    </button>
+                </nav>
+
+                <!-- Tab Content -->
+                <div class="tab-content-wrapper">
+                    <!-- Tab 1: Globe.GL -->
+                    <div class="tab-content active" id="tab-globe-gl">
+                        <div class="tab-info">
+                            <h3>Globe.GL with NASA Blue Marble</h3>
+                            <p>WebGL-based 3D globe using NASA's Blue Marble imagery (51MB bundle)</p>
+                            <ul>
+                                <li>✅ Beautiful 3D visualization</li>
+                                <li>✅ Auto-rotating globe</li>
+                                <li>✅ Smaller bundle size (51MB)</li>
+                                <li>⚠️ No offline tile caching</li>
+                            </ul>
+                        </div>
+                        <div id="map-globe-gl" class="map-view"></div>
+                    </div>
+
+                    <!-- Tab 2: Leaflet -->
+                    <div class="tab-content" id="tab-leaflet">
+                        <div class="tab-info">
+                            <h3>Leaflet 2D with Dark Tiles ⭐ RECOMMENDED</h3>
+                            <p>Traditional 2D mapping with offline tile support (500MB for global coverage)</p>
+                            <ul>
+                                <li>✅ Fully offline capable</li>
+                                <li>✅ Fast and lightweight code</li>
+                                <li>✅ Easy dark theme integration</li>
+                                <li>✅ Most reliable for desktop apps</li>
+                                <li>⚠️ Larger tile storage (500MB)</li>
+                            </ul>
+                        </div>
+                        <div id="map-leaflet" class="map-view"></div>
+                    </div>
+
+                    <!-- Tab 3: MapLibre 2D -->
+                    <div class="tab-content" id="tab-maplibre-2d">
+                        <div class="tab-info">
+                            <h3>MapLibre GL JS (2D Vector)</h3>
+                            <p>Modern vector-based mapping with smooth zoom and styling</p>
+                            <ul>
+                                <li>✅ Vector tiles (smaller storage)</li>
+                                <li>✅ Smooth zoom and rotation</li>
+                                <li>✅ Built-in dark theme support</li>
+                                <li>⚠️ Requires GPU acceleration</li>
+                            </ul>
+                        </div>
+                        <div id="map-maplibre-2d" class="map-view"></div>
+                    </div>
+
+                    <!-- Tab 4: MapLibre 3D Globe -->
+                    <div class="tab-content" id="tab-maplibre-3d">
+                        <div class="tab-info">
+                            <h3>MapLibre GL JS (3D Globe Mode)</h3>
+                            <p>Vector globe with full 3D terrain support</p>
+                            <ul>
+                                <li>✅ 3D globe projection</li>
+                                <li>✅ Vector tiles with terrain</li>
+                                <li>✅ Smooth transitions</li>
+                                <li>⚠️ Higher GPU requirements</li>
+                            </ul>
+                        </div>
+                        <div id="map-maplibre-3d" class="map-view"></div>
+                    </div>
+
+                    <!-- Tab 5: Cesium -->
+                    <div class="tab-content" id="tab-cesium">
+                        <div class="tab-info">
+                            <h3>Cesium JS</h3>
+                            <p>Advanced 3D geospatial visualization (150MB with terrain data)</p>
+                            <ul>
+                                <li>✅ Photorealistic 3D globe</li>
+                                <li>✅ Advanced terrain rendering</li>
+                                <li>✅ Time-based animations</li>
+                                <li>⚠️ Larger bundle size (150MB)</li>
+                                <li>⚠️ More complex API</li>
+                            </ul>
+                        </div>
+                        <div id="map-cesium" class="map-view"></div>
+                    </div>
                 </div>
-
-                <!-- 2D Map -->
-                <div id="map2d" class="map-view active"></div>
-
-                <!-- 3D Globe -->
-                <div id="globe3d" class="map-view"></div>
 
                 <!-- Legend -->
                 <div class="legend">
@@ -112,12 +204,18 @@
         <p>Analyzing image...</p>
     </div>
 
+    <!-- JavaScript Libraries -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/globe.gl@2.31.0/dist/globe.gl.min.js"></script>
+    <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.111/Build/Cesium/Cesium.js"></script>
+
     <!-- Custom JavaScript -->
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 
     {% if demo_predictions %}
     <script>
-        // Load demo predictions on page load
         window.addEventListener('DOMContentLoaded', function() {
             const demoData = {{ demo_predictions | tojson }};
             window.GeoLensApp.displayPredictions(demoData, null);

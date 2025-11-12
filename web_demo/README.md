@@ -1,160 +1,184 @@
-# GeoLens Web Demo
+# GeoLens Map Library Comparison Demo
 
-A Flask-based web demo to visualize GeoLens predictions on interactive maps before building the full WinUI3 desktop application.
+A comprehensive Flask web demo comparing **5 different mapping libraries** for the GeoLens WinUI3 application. See predictions from GeoCLIP visualized on each platform to make an informed technology choice.
 
-## Features
+## 🗺️ The 5 Map Libraries
 
-- **Dual Visualization Modes**
-  - 2D map with dark theme (Leaflet.js + CartoDB Dark tiles)
-  - 3D interactive globe (globe.gl)
+### Tab 1: Globe.GL + NASA (51MB)
+- WebGL-based 3D globe using NASA Blue Marble imagery
+- Auto-rotating with smooth animations
+- Smaller bundle size
+- **Pros**: Beautiful visuals, good performance
+- **Cons**: No offline tile caching
 
-- **Image Upload & Analysis**
-  - Drag & drop or click to upload
-  - Integrates with FastAPI backend for real predictions
-  - Demo mode with sample data (no backend required)
+### Tab 2: Leaflet 2D (500MB) ⭐ **RECOMMENDED**
+- Traditional 2D mapping with dark CartoDB tiles
+- Full offline capability with MBTiles
+- Lightweight and battle-tested
+- **Pros**: Most reliable, offline support, easy dark theme
+- **Cons**: Larger tile storage for offline mode
 
+### Tab 3: MapLibre 2D (Vector)
+- Modern vector-based 2D mapping
+- Smooth zoom and rotation
+- Smaller storage with vector tiles
+- **Pros**: Smooth UX, GPU-accelerated, modern
+- **Cons**: Requires GPU, more complex
+
+### Tab 4: MapLibre 3D Globe
+- Same as MapLibre 2D but with globe projection
+- 3D terrain support
+- **Pros**: Beautiful globe view, vector benefits
+- **Cons**: Higher GPU requirements
+
+### Tab 5: Cesium (150MB)
+- Professional 3D geospatial platform
+- Photorealistic globe with terrain
+- Time-based animations
+- **Pros**: Most advanced features, stunning visuals
+- **Cons**: Larger bundle, steeper learning curve
+
+## 🚀 Quick Start
+
+### Option 1: Demo Mode (No Backend)
+
+```powershell
+cd web_demo
+python app.py
+```
+
+Open http://localhost:5000 and click **"Load Demo Data"** to see sample predictions on all 5 map types!
+
+### Option 2: Full Mode (With GeoCLIP Backend)
+
+**Terminal 1** - Start FastAPI backend:
+```powershell
+cd C:\Users\Luke\git\geolens
+# Try port 8000 if 8899 is blocked:
+uvicorn Core.api_service:app --reload --port 8000
+```
+
+**Terminal 2** - Start Flask:
+```powershell
+cd C:\Users\Luke\git\geolens\web_demo
+python app.py
+```
+
+Open http://localhost:5000 and upload an image to get real predictions!
+
+## ✨ Features
+
+- **5 Mapping Libraries** - Side-by-side comparison with detailed pros/cons
+- **Tabbed Interface** - Easy switching between map types
+- **Dark Theme** - All maps styled for dark mode
 - **Confidence Color Coding**
-  - 🟢 High (>10% probability) - Green
-  - 🟡 Medium (5-10% probability) - Yellow
-  - 🔴 Low (<5% probability) - Red
+  - 🟢 Green: High (>10%)
+  - 🟡 Yellow: Medium (5-10%)
+  - 🔴 Red: Low (<5%)
+- **Interactive**
+  - Click predictions to focus
+  - Hover for details
+  - Drag to rotate/pan
+- **Image Upload** - Drag & drop or file picker
+- **Demo Mode** - Works without backend
 
-- **Interactive Features**
-  - Click predictions to focus on map
-  - Hover over markers for details
-  - Toggle between 2D/3D views
-  - Auto-rotating globe
-  - Dark theme throughout
+## 📊 Comparison Summary
 
-## Quick Start
+| Library | Bundle Size | Offline | 3D | GPU Required | Complexity |
+|---------|-------------|---------|----|--------------| -----------|
+| **Globe.GL** | 51MB | ❌ | ✅ | ⚠️ Optional | Low |
+| **Leaflet** ⭐ | 500MB | ✅ | ❌ | ❌ | Low |
+| **MapLibre 2D** | ~50MB | ✅ | ❌ | ✅ | Medium |
+| **MapLibre 3D** | ~50MB | ✅ | ✅ | ✅ | Medium |
+| **Cesium** | 150MB | ⚠️ Partial | ✅ | ✅ | High |
 
-### Option 1: Demo Mode (No Backend Required)
+## 🎯 Recommendation
 
-1. Install Flask dependencies:
-```bash
-cd web_demo
-pip install -r requirements.txt
+**For GeoLens Desktop App: Leaflet 2D**
+
+Why:
+1. **Reliability** - Most mature and stable for desktop WebView2 integration
+2. **Offline First** - Full offline with MBTiles (critical for no-cloud requirement)
+3. **Dark Theme** - Easy to implement with CartoDB Dark Matter tiles
+4. **Lightweight** - Simple API, low memory footprint
+5. **Wide Adoption** - Extensive documentation and community support
+
+**Alternative**: MapLibre 2D if you want vector tiles and smoother zooming (requires GPU acceleration check).
+
+## 🛠️ Troubleshooting
+
+### Backend Port Issues (Windows Error 10013)
+
+If port 8899 is blocked, try port 8000:
+```powershell
+uvicorn Core.api_service:app --reload --port 8000
 ```
 
-2. Run the Flask server:
-```bash
-python app.py
+Then update `web_demo/app.py` line 17:
+```python
+BACKEND_URL = 'http://localhost:8000'  # Changed from 8899
 ```
 
-3. Open your browser to: http://localhost:5000
+### Maps Not Loading
 
-4. Click "Load Demo Data" to see sample predictions on the map
+Check browser console (F12 → Console):
+- **"Globe.gl library not loaded"** - CDN blocked, check firewall
+- **"MapLibre GL JS not loaded"** - CDN blocked
+- **"Cesium not loaded"** - CDN blocked
 
-### Option 2: Full Mode (With FastAPI Backend)
+Solution: Ensure internet connection for CDN resources.
 
-1. Start the FastAPI backend (in a separate terminal):
-```bash
-cd /home/user/geolens
-uvicorn Core.api_service:app --reload --port 8899
-```
+### Only One Map Type Shows
 
-2. Install Flask dependencies:
-```bash
-cd web_demo
-pip install -r requirements.txt
-```
+Click the **tab buttons** at the top of the map area. Active tab has cyan/green gradient.
 
-3. Run the Flask server:
-```bash
-python app.py
-```
-
-4. Open your browser to: http://localhost:5000
-
-5. Upload an image to get real predictions from GeoCLIP!
-
-## Usage
-
-### Demo Mode
-- Click **"Load Demo Data"** to see sample predictions across major cities
-- Toggle between **2D Map** and **3D Globe** views
-- Click on prediction items in the sidebar to focus the map
-
-### Upload Mode (Backend Required)
-1. Upload an image using drag & drop or file picker
-2. Adjust "Predictions to show" (1-50, default 10)
-3. Click **"Analyze Image"**
-4. View predictions on the map with confidence levels
-5. Click predictions to zoom and see details
-
-## Architecture
-
-```
-┌─────────────────────────────────────┐
-│   Flask Web Server (port 5000)     │
-│   - Image upload handling           │
-│   - HTML template rendering         │
-│   - Static file serving             │
-└──────────────┬──────────────────────┘
-               │ HTTP requests
-┌──────────────▼──────────────────────┐
-│  FastAPI Backend (port 8899)        │
-│  - GeoCLIP inference                │
-│  - Reverse geocoding                │
-│  - /health and /infer endpoints     │
-└─────────────────────────────────────┘
-```
-
-## File Structure
+## 📁 File Structure
 
 ```
 web_demo/
-├── app.py                 # Flask application
-├── requirements.txt       # Python dependencies
+├── app.py                 # Flask server with upload endpoints
+├── requirements.txt       # Flask, requests, Pillow
 ├── templates/
-│   └── index.html        # Main page template
+│   └── index.html        # 5-tab comparison interface
 ├── static/
 │   ├── css/
-│   │   └── style.css     # Dark theme styles
+│   │   └── style.css     # Dark theme + tab styles
 │   ├── js/
-│   │   └── app.js        # Map interactions & API calls
-│   └── uploads/          # Uploaded images (auto-created)
+│   │   └── app.js        # 5 map initializers + predictions
+│   └── uploads/          # Uploaded images
 └── README.md             # This file
 ```
 
-## Technologies
+## 🔧 Technologies Used
 
 - **Backend**: Flask 3.0+
-- **2D Maps**: Leaflet.js with CartoDB Dark Matter tiles
-- **3D Globe**: globe.gl + Three.js
+- **Map Libraries**:
+  - Leaflet 1.9.4
+  - Globe.GL 2.31.0 + Three.js 0.160.0
+  - MapLibre GL JS 3.6.2
+  - Cesium 1.111
+- **Tiles**: CartoDB Dark Matter (Leaflet), MapLibre demo tiles
 - **Styling**: Custom dark theme CSS
-- **Image Processing**: Pillow
 
-## Troubleshooting
+## 🎨 Integration into WinUI3
 
-### Backend not connecting
-- Make sure FastAPI is running on port 8899
-- Check the status indicator in the top-right (should be green when connected)
-- Demo mode works without backend - click "Load Demo Data"
+Once you choose a library:
 
-### Maps not loading
-- Check browser console for errors
-- Ensure you have internet connection (for map tiles and CDN libraries)
-- Try refreshing the page
+1. **Leaflet** → Use WebView2 with local HTML file, bundle MBTiles in `maps/` folder
+2. **Globe.GL** → WebView2 + bundle NASA textures (51MB)
+3. **MapLibre** → WebView2 + bundle vector style JSON + tiles
+4. **Cesium** → WebView2 + Cesium ion token + 150MB assets
 
-### Upload not working
-- Supported formats: PNG, JPG, JPEG, GIF, BMP, WEBP
-- Max file size: 16MB
-- Backend must be running for analysis
+All approaches use WebView2 component in WinUI3 with JavaScript interop for C# ↔ Map communication.
 
-## Next Steps
+## 📝 Next Steps
 
-Once you're happy with the visualizations:
-1. These map styles can be integrated into the WinUI3 app using WebView2
-2. The confidence color coding will be used throughout the UI
-3. The 3D globe can be embedded in the main desktop application
-4. The prediction layout can inform the final UI design
+1. **Try all 5 tabs** to see visual differences
+2. **Upload test images** to see how predictions look
+3. **Check performance** on your hardware (especially 3D views)
+4. **Pick your favorite** for the desktop app
+5. **Report back** which one you prefer!
 
-## Development
+---
 
-To modify the demo:
-- Edit `templates/index.html` for structure changes
-- Edit `static/css/style.css` for styling
-- Edit `static/js/app.js` for map behavior
-- Edit `app.py` for backend routes
-
-All changes auto-reload with Flask's debug mode.
+**Current Status**: Demo works in standalone mode with sample data. Backend integration ready for real GeoCLIP predictions.
