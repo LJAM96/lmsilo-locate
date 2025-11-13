@@ -13,7 +13,10 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading.Tasks;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Processing;
 using MUXC = Microsoft.UI.Xaml.Controls;
 
 namespace GeoLens.Views
@@ -260,13 +263,13 @@ namespace GeoLens.Views
 
                         try
                         {
-                            // Load image using ImageSharp
+                            // Load image using ImageSharp with explicit pixel format
                             using var stream = await file.OpenReadAsync();
                             using var memStream = new MemoryStream();
                             await stream.AsStreamForRead().CopyToAsync(memStream);
                             memStream.Position = 0;
 
-                            using var image = await SixLabors.ImageSharp.Image.LoadAsync(memStream);
+                            using var image = await SixLabors.ImageSharp.Image.LoadAsync<SixLabors.ImageSharp.PixelFormats.Rgba32>(memStream);
 
                             // Calculate thumbnail size maintaining aspect ratio
                             int targetSize = 140;
@@ -307,7 +310,7 @@ namespace GeoLens.Views
                             );
 
                             using var pixelStream = writeableBitmap.PixelBuffer.AsStream();
-                            await pixelStream.WriteAsync(pixelData, 0, pixelData.Length);
+                            pixelStream.Write(pixelData, 0, pixelData.Length);
 
                             thumbnailImage = writeableBitmap;
                             Debug.WriteLine($"[AddImages] Successfully loaded thumbnail for {file.Name} via ImageSharp ({scaledWidth}x{scaledHeight})");
