@@ -109,54 +109,6 @@
                 </CommandBar.SecondaryCommands>
             </CommandBar>
 
-            <!-- Multi-Selection Toolbar (appears when 2+ images selected) -->
-            <!-- In Grid.Row="0" after CommandBar to render on top -->
-            <Border x:Name="MultiSelectToolbar"
-                   Grid.Row="0"
-                   Background="{ThemeResource SystemFillColorAttentionBackgroundBrush}"
-                   BorderBrush="{ThemeResource SystemFillColorAttentionBrush}"
-                   BorderThickness="0,0,0,1"
-                   Padding="12,8"
-                   Visibility="Collapsed">
-                <Grid ColumnSpacing="12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-
-                    <StackPanel Grid.Column="0"
-                               Orientation="Horizontal"
-                               Spacing="8">
-                        <ToggleButton x:Name="HeatmapToggle"
-                                     MinWidth="110"
-                                     Checked="HeatmapToggle_Checked"
-                                     Unchecked="HeatmapToggle_Unchecked">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <FontIcon Glyph="&#xE81E;"/>
-                                <TextBlock Text="Heatmap"/>
-                            </StackPanel>
-                        </ToggleButton>
-
-                        <Button MinWidth="110"
-                               Click="OverlayAll_Click">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <FontIcon Glyph="&#xE8B3;"/>
-                                <TextBlock Text="Overlay All"/>
-                            </StackPanel>
-                        </Button>
-                    </StackPanel>
-
-                    <TextBlock Grid.Column="1"
-                              x:Name="MultiSelectStatusText"
-                              VerticalAlignment="Center"
-                              HorizontalAlignment="Right"
-                              Text="2 images selected"
-                              Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                              FontWeight="SemiBold"
-                              FontSize="12"/>
-                </Grid>
-            </Border>
-
             <!-- Image ListView (Single Column) -->
             <ListView x:Name="ImageListView"
                      Grid.Row="1"
@@ -282,34 +234,77 @@
                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                    BorderThickness="0,1,0,0"
                    Padding="16,12">
-                <StackPanel Spacing="8">
-                    <Grid>
+                <Grid>
+                    <!-- Normal Status (shown when < 2 images selected) -->
+                    <StackPanel x:Name="NormalStatus" Spacing="8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Column="0"
+                                      FontSize="12"
+                                      Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                                <Run Text="Total:"/>
+                                <Run Text="{x:Bind ImageQueue.Count, Mode=OneWay}" FontWeight="SemiBold"/>
+                            </TextBlock>
+
+                            <TextBlock Grid.Column="1"
+                                      Text="{x:Bind SelectedCountText, Mode=OneWay}"
+                                      FontSize="12"
+                                      Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                      FontWeight="SemiBold"/>
+                        </Grid>
+
+                        <TextBlock Text="{x:Bind QueueStatusMessage, Mode=OneWay}"
+                                  FontSize="11"
+                                  Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                  TextWrapping="Wrap"
+                                  MaxLines="2"
+                                  TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+
+                    <!-- Multi-Selection Toolbar (shown when 2+ images selected) -->
+                    <Grid x:Name="MultiSelectToolbar"
+                         Visibility="Collapsed">
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
 
-                        <TextBlock Grid.Column="0"
-                                  FontSize="12"
-                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}">
-                            <Run Text="Total:"/>
-                            <Run Text="{x:Bind ImageQueue.Count, Mode=OneWay}" FontWeight="SemiBold"/>
-                        </TextBlock>
+                        <StackPanel Grid.Column="0"
+                                   Orientation="Horizontal"
+                                   Spacing="8">
+                            <ToggleButton x:Name="HeatmapToggle"
+                                         MinWidth="110"
+                                         Checked="HeatmapToggle_Checked"
+                                         Unchecked="HeatmapToggle_Unchecked">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE81E;" FontSize="14"/>
+                                    <TextBlock Text="Heatmap"/>
+                                </StackPanel>
+                            </ToggleButton>
 
-                        <TextBlock Grid.Column="1"
-                                  Text="{x:Bind SelectedCountText, Mode=OneWay}"
-                                  FontSize="12"
+                            <Button MinWidth="110"
+                                   Click="OverlayAll_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE8B3;" FontSize="14"/>
+                                    <TextBlock Text="Overlay All"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+
+                        <TextBlock Grid.Column="2"
+                                  x:Name="MultiSelectStatusText"
+                                  VerticalAlignment="Center"
+                                  Text="2 images selected"
                                   Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                                  FontWeight="SemiBold"/>
+                                  FontWeight="SemiBold"
+                                  FontSize="12"/>
                     </Grid>
-
-                    <TextBlock Text="{x:Bind QueueStatusMessage, Mode=OneWay}"
-                              FontSize="11"
-                              Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                              TextWrapping="Wrap"
-                              MaxLines="2"
-                              TextTrimming="CharacterEllipsis"/>
-                </StackPanel>
+                </Grid>
             </Border>
         </Grid>
 
