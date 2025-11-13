@@ -153,10 +153,12 @@ namespace GeoLens.Views
             var selectedCount = ImageListView.SelectedItems.Count;
             SelectedCountText = selectedCount > 0 ? $"{selectedCount} selected" : "";
 
-            // Show/hide multi-select toolbar
+            // Show/hide multi-select toolbar and normal status
             if (selectedCount >= 2)
             {
+                // Show multi-select toolbar, hide normal status
                 MultiSelectToolbar.Visibility = Visibility.Visible;
+                NormalStatus.Visibility = Visibility.Collapsed;
                 MultiSelectStatusText.Text = $"{selectedCount} images selected";
 
                 // If heatmap mode is active, update the heatmap
@@ -169,6 +171,7 @@ namespace GeoLens.Views
             {
                 // Single image selected - load its predictions
                 MultiSelectToolbar.Visibility = Visibility.Collapsed;
+                NormalStatus.Visibility = Visibility.Visible;
 
                 var selectedItem = ImageListView.SelectedItem as ImageQueueItem;
                 if (selectedItem != null &&
@@ -193,6 +196,7 @@ namespace GeoLens.Views
             else
             {
                 MultiSelectToolbar.Visibility = Visibility.Collapsed;
+                NormalStatus.Visibility = Visibility.Visible;
 
                 // Exit heatmap mode if less than 2 images selected
                 if (_isHeatmapMode)
