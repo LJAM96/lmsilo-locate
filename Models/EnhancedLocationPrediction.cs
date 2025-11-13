@@ -78,11 +78,57 @@ namespace GeoLens.Models
             }
         }
 
+        // Calculated Properties
+        /// <summary>
+        /// The confidence boost applied due to clustering (difference between adjusted and original)
+        /// </summary>
+        public double ConfidenceBoost => AdjustedProbability - Probability;
+
+        /// <summary>
+        /// Whether this prediction received a confidence boost
+        /// </summary>
+        public bool HasBoost => ConfidenceBoost > 0.001; // Account for floating point precision
+
         // UI Helper Properties
         public string LatitudeFormatted => $"{Math.Abs(Latitude):F6}° {(Latitude >= 0 ? "N" : "S")}";
         public string LongitudeFormatted => $"{Math.Abs(Longitude):F6}° {(Longitude >= 0 ? "E" : "W")}";
         public string Coordinates => $"{LatitudeFormatted}, {LongitudeFormatted}";
-        public string ProbabilityFormatted => $"{AdjustedProbability:P1}";
+
+        /// <summary>
+        /// Original probability from AI model
+        /// </summary>
+        public string OriginalProbabilityFormatted => $"{Probability:P1}";
+
+        /// <summary>
+        /// Adjusted probability (after clustering boost)
+        /// </summary>
+        public string AdjustedProbabilityFormatted => $"{AdjustedProbability:P1}";
+
+        /// <summary>
+        /// Primary display probability (uses adjusted value)
+        /// </summary>
+        public string ProbabilityFormatted => AdjustedProbabilityFormatted;
+
+        /// <summary>
+        /// Boost amount as formatted percentage
+        /// </summary>
+        public string BoostFormatted => $"+{ConfidenceBoost:P1}";
+
+        /// <summary>
+        /// Full probability breakdown for display
+        /// Example: "3.2% base + 8.8% clustering boost = 12.0%"
+        /// </summary>
+        public string ProbabilityBreakdown
+        {
+            get
+            {
+                if (HasBoost)
+                {
+                    return $"{OriginalProbabilityFormatted} base + {BoostFormatted} clustering boost = {AdjustedProbabilityFormatted}";
+                }
+                return OriginalProbabilityFormatted;
+            }
+        }
 
         public string ConfidenceText => ConfidenceLevel switch
         {
@@ -113,13 +159,22 @@ namespace GeoLens.Models
 
         /// <summary>
         /// Calculate confidence level based on probability and clustering
+        /// More realistic thresholds:
+        /// - High: >= 30% (strong confidence in location)
+        /// - Medium: >= 15% (moderate confidence)
+        /// - Low: < 15% (weak confidence, multiple possibilities)
         /// </summary>
         public static ConfidenceLevel ClassifyConfidence(double probability, bool isClustered)
         {
-            if (probability > 0.1 || isClustered)
+            // High confidence: >= 30%
+            if (probability >= 0.30)
                 return ConfidenceLevel.High;
-            if (probability >= 0.05)
+
+            // Medium confidence: >= 15%
+            if (probability >= 0.15)
                 return ConfidenceLevel.Medium;
+
+            // Low confidence: < 15%
             return ConfidenceLevel.Low;
         }
 

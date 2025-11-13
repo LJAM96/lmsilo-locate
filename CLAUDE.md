@@ -169,13 +169,18 @@ All core services are production-ready with comprehensive error handling:
 
 ### Confidence Level System
 
-Predictions are classified into 4 levels:
+Predictions are classified into 4 levels based on **adjusted probability** (after clustering boost):
 - **Very High**: EXIF GPS data (cyan pin, always shown first)
-- **High**: Probability > 0.1 or geographic clustering detected (green)
-- **Medium**: Probability 0.05-0.1 (yellow)
-- **Low**: Probability < 0.05 (red)
+- **High**: Adjusted probability ≥ 30% (green) - strong confidence in location
+- **Medium**: Adjusted probability ≥ 15% (yellow) - moderate confidence
+- **Low**: Adjusted probability < 15% (red) - weak confidence, multiple possibilities
 
-Clustering analysis: If multiple predictions fall within 100km radius, boost confidence and highlight the cluster center.
+**Clustering Boost**: If multiple predictions fall within 100km radius, a confidence boost (up to 15%) is applied to clustered predictions. The UI and all exports display:
+- **Base probability**: Original AI model output
+- **Clustering boost**: Percentage increase due to geographic clustering
+- **Final probability**: Base + boost (used for confidence classification)
+
+Example: `3.2% base + 8.8% clustering boost = 12.0%` (classified as Low since < 15%)
 
 ### Dark Mode Visualization Strategy
 
