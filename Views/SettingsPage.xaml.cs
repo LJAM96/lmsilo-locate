@@ -23,7 +23,7 @@ namespace GeoLens.Views
             _isLoading = true;
             await LoadSettingsAsync();
             await UpdateCacheStatisticsAsync();
-            UpdateHardwareInfoAsync();
+            UpdateHardwareInfo();
             _isLoading = false;
         }
 
@@ -106,7 +106,7 @@ namespace GeoLens.Views
         /// <summary>
         /// Update hardware information display
         /// </summary>
-        private void UpdateHardwareInfoAsync()
+        private void UpdateHardwareInfo()
         {
             try
             {

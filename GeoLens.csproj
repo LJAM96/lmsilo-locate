@@ -78,7 +78,7 @@
     <!-- Phase 4: WebView2 for 2D Map -->
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3179.45" />
     <!-- Image processing library for WebP/HEIC support without system codecs -->
-    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.6" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
   <ItemGroup>
