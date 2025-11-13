@@ -205,14 +205,44 @@ namespace GeoLens.Views
                     // Get file info
                     var props = await file.GetBasicPropertiesAsync();
 
-                    // Load thumbnail
-                    var thumbnail = await file.GetThumbnailAsync(
-                        Windows.Storage.FileProperties.ThumbnailMode.PicturesView,
-                        140,
-                        Windows.Storage.FileProperties.ThumbnailOptions.UseCurrentScale);
-
                     BitmapImage thumbnailImage = new BitmapImage();
-                    await thumbnailImage.SetSourceAsync(thumbnail);
+
+                    try
+                    {
+                        // Try to load Windows thumbnail first
+                        var thumbnail = await file.GetThumbnailAsync(
+                            Windows.Storage.FileProperties.ThumbnailMode.PicturesView,
+                            140,
+                            Windows.Storage.FileProperties.ThumbnailOptions.UseCurrentScale);
+
+                        if (thumbnail != null && thumbnail.Size > 0)
+                        {
+                            await thumbnailImage.SetSourceAsync(thumbnail);
+                        }
+                        else
+                        {
+                            throw new Exception("Thumbnail generation returned empty stream");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // Fallback: Load the actual image file (common for WebP, HEIC)
+                        Debug.WriteLine($"[AddImages] Thumbnail failed for {file.Name}, loading full image: {ex.Message}");
+
+                        try
+                        {
+                            using var stream = await file.OpenReadAsync();
+                            thumbnailImage.DecodePixelWidth = 140;
+                            thumbnailImage.DecodePixelHeight = 140;
+                            await thumbnailImage.SetSourceAsync(stream);
+                        }
+                        catch (Exception innerEx)
+                        {
+                            Debug.WriteLine($"[AddImages] Failed to load image {file.Name}: {innerEx.Message}");
+                            // Use null thumbnail - will show placeholder in UI
+                            thumbnailImage = null;
+                        }
+                    }
 
                     // Add to queue
                     var newImage = new ImageQueueItem

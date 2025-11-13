@@ -1,13 +1,21 @@
 using Microsoft.UI.Xaml.Media;
 using System;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 
 namespace GeoLens.Models
 {
     /// <summary>
     /// Enhanced location prediction with confidence level and clustering information
     /// </summary>
-    public class EnhancedLocationPrediction
+    public class EnhancedLocationPrediction : INotifyPropertyChanged
     {
+        private double _adjustedProbability;
+        private bool _isPartOfCluster;
+        private ConfidenceLevel _confidenceLevel;
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
         public int Rank { get; set; }
         public double Latitude { get; set; }
         public double Longitude { get; set; }
@@ -21,17 +29,54 @@ namespace GeoLens.Models
         /// <summary>
         /// Probability adjusted for clustering bonus
         /// </summary>
-        public double AdjustedProbability { get; set; }
+        public double AdjustedProbability
+        {
+            get => _adjustedProbability;
+            set
+            {
+                if (_adjustedProbability != value)
+                {
+                    _adjustedProbability = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(ProbabilityFormatted));
+                }
+            }
+        }
 
         /// <summary>
         /// Whether this prediction is part of a geographic cluster
         /// </summary>
-        public bool IsPartOfCluster { get; set; }
+        public bool IsPartOfCluster
+        {
+            get => _isPartOfCluster;
+            set
+            {
+                if (_isPartOfCluster != value)
+                {
+                    _isPartOfCluster = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
 
         /// <summary>
         /// Confidence level classification
         /// </summary>
-        public ConfidenceLevel ConfidenceLevel { get; set; }
+        public ConfidenceLevel ConfidenceLevel
+        {
+            get => _confidenceLevel;
+            set
+            {
+                if (_confidenceLevel != value)
+                {
+                    _confidenceLevel = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(ConfidenceText));
+                    OnPropertyChanged(nameof(ConfidenceColor));
+                    OnPropertyChanged(nameof(ConfidenceGlyph));
+                }
+            }
+        }
 
         // UI Helper Properties
         public string LatitudeFormatted => $"{Math.Abs(Latitude):F6}° {(Latitude >= 0 ? "N" : "S")}";
@@ -76,6 +121,11 @@ namespace GeoLens.Models
             if (probability >= 0.05)
                 return ConfidenceLevel.Medium;
             return ConfidenceLevel.Low;
+        }
+
+        protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
     }
 }
