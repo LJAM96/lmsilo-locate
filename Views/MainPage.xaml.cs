@@ -25,40 +25,20 @@ namespace GeoLens.Views
     {
         private bool _hasExifGps;
         private string _reliabilityMessage = "No image selected";
-        private string _selectedCountText = "";
         private IMapProvider? _mapProvider;
         private readonly PredictionCacheService _cacheService = new();
         private readonly GeographicClusterAnalyzer _clusterAnalyzer = new();
-        private readonly ExportService _exportService = new();
-        private readonly PredictionHeatmapGenerator _heatmapGenerator = new();
         private ClusterAnalysisResult? _currentClusterInfo;
 
-        // Current image data for export
+        // Current image data
         private string _currentImagePath = "";
         private ExifGpsData? _currentExifData;
-
-        // Heatmap state
-        private HeatmapData? _currentHeatmap;
-        private bool _isHeatmapMode = false;
 
         // Observable Collections
         public ObservableCollection<ImageQueueItem> ImageQueue { get; } = new();
         public ObservableCollection<EnhancedLocationPrediction> Predictions { get; } = new();
 
         // Properties for UI bindings
-        public string SelectedCountText
-        {
-            get => _selectedCountText;
-            set
-            {
-                if (_selectedCountText != value)
-                {
-                    _selectedCountText = value;
-                    OnPropertyChanged();
-                }
-            }
-        }
-
         public string QueueStatusMessage => ImageQueue.Count == 0
             ? "No images in queue"
             : $"{ImageQueue.Count} image(s) in queue";
@@ -150,59 +130,17 @@ namespace GeoLens.Views
 
         private async void ImageListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            var selectedCount = ImageListView.SelectedItems.Count;
-            SelectedCountText = selectedCount > 0 ? $"{selectedCount} selected" : "";
-
-            // Show/hide multi-select toolbar and normal status
-            if (selectedCount >= 2)
+            // Single selection mode - load predictions for selected image
+            var selectedItem = ImageListView.SelectedItem as ImageQueueItem;
+            if (selectedItem != null &&
+                (selectedItem.Status == QueueStatus.Done || selectedItem.Status == QueueStatus.Cached))
             {
-                // Show multi-select toolbar, hide normal status
-                MultiSelectToolbar.Visibility = Visibility.Visible;
-                NormalStatus.Visibility = Visibility.Collapsed;
-                MultiSelectStatusText.Text = $"{selectedCount} images selected";
-
-                // If heatmap mode is active, update the heatmap
-                if (_isHeatmapMode && HeatmapToggle.IsChecked == true)
+                // Load cached predictions for this image
+                var cached = await _cacheService.GetCachedPredictionAsync(selectedItem.FilePath);
+                if (cached != null)
                 {
-                    await UpdateHeatmapAsync();
-                }
-            }
-            else if (selectedCount == 1)
-            {
-                // Single image selected - load its predictions
-                MultiSelectToolbar.Visibility = Visibility.Collapsed;
-                NormalStatus.Visibility = Visibility.Visible;
-
-                var selectedItem = ImageListView.SelectedItem as ImageQueueItem;
-                if (selectedItem != null &&
-                    (selectedItem.Status == QueueStatus.Done || selectedItem.Status == QueueStatus.Cached))
-                {
-                    // Load cached predictions for this image
-                    var cached = await _cacheService.GetCachedPredictionAsync(selectedItem.FilePath);
-                    if (cached != null)
-                    {
-                        await DisplayCachedPredictionsAsync(cached);
-                        Debug.WriteLine($"[Selection] Loaded predictions for {selectedItem.FileName}");
-                    }
-                }
-
-                // Exit heatmap mode if active
-                if (_isHeatmapMode)
-                {
-                    HeatmapToggle.IsChecked = false;
-                    _isHeatmapMode = false;
-                }
-            }
-            else
-            {
-                MultiSelectToolbar.Visibility = Visibility.Collapsed;
-                NormalStatus.Visibility = Visibility.Visible;
-
-                // Exit heatmap mode if less than 2 images selected
-                if (_isHeatmapMode)
-                {
-                    HeatmapToggle.IsChecked = false;
-                    _isHeatmapMode = false;
+                    await DisplayCachedPredictionsAsync(cached);
+                    Debug.WriteLine($"[Selection] Loaded predictions for {selectedItem.FileName}");
                 }
             }
         }
@@ -817,72 +755,15 @@ namespace GeoLens.Views
             };
         }
 
-        private void SelectAll_Click(object sender, RoutedEventArgs e)
-        {
-            ImageListView.SelectAll();
-        }
-
-        private async void ExportSelection_Click(object sender, RoutedEventArgs e)
-        {
-            // Show a menu flyout with export format options
-            var flyout = new MenuFlyout();
-
-            var csvItem = new MenuFlyoutItem { Text = "Export as CSV", Icon = new SymbolIcon(Symbol.Document) };
-            csvItem.Click += ExportCsv_Click;
-            flyout.Items.Add(csvItem);
-
-            var jsonItem = new MenuFlyoutItem { Text = "Export as JSON", Icon = new SymbolIcon(Symbol.Document) };
-            jsonItem.Click += ExportJson_Click;
-            flyout.Items.Add(jsonItem);
-
-            var pdfItem = new MenuFlyoutItem { Text = "Export as PDF", Icon = new SymbolIcon(Symbol.Document) };
-            pdfItem.Click += ExportPdf_Click;
-            flyout.Items.Add(pdfItem);
-
-            var kmlItem = new MenuFlyoutItem { Text = "Export as KML", Icon = new SymbolIcon(Symbol.Map) };
-            kmlItem.Click += ExportKml_Click;
-            flyout.Items.Add(kmlItem);
-
-            // Show the flyout at the button location
-            if (sender is FrameworkElement element)
-            {
-                flyout.ShowAt(element);
-            }
-        }
-
-        private async void ExportCsv_Click(object sender, RoutedEventArgs e)
-        {
-            await ExportCurrentResultAsync("csv", "CSV File", ".csv");
-        }
-
-        private async void ExportJson_Click(object sender, RoutedEventArgs e)
-        {
-            await ExportCurrentResultAsync("json", "JSON File", ".json");
-        }
-
-        private async void ExportPdf_Click(object sender, RoutedEventArgs e)
-        {
-            await ExportCurrentResultAsync("pdf", "PDF Document", ".pdf");
-        }
-
-        private async void ExportKml_Click(object sender, RoutedEventArgs e)
-        {
-            await ExportCurrentResultAsync("kml", "KML File", ".kml");
-        }
-
-        private void ClearSelection_Click(object sender, RoutedEventArgs e)
-        {
-            ImageListView.SelectedItems.Clear();
-        }
-
         private void RemoveSelected_Click(object sender, RoutedEventArgs e)
         {
-            var toRemove = ImageListView.SelectedItems.Cast<ImageQueueItem>().ToList();
-            foreach (var item in toRemove)
+            // Remove currently selected image
+            var selectedItem = ImageListView.SelectedItem as ImageQueueItem;
+            if (selectedItem != null)
             {
-                ImageQueue.Remove(item);
+                ImageQueue.Remove(selectedItem);
+                OnPropertyChanged(nameof(QueueStatusMessage));
             }
-            OnPropertyChanged(nameof(QueueStatusMessage));
         }
 
         private void NavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -1049,184 +930,6 @@ namespace GeoLens.Views
         private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-        }
-
-        // Heatmap Event Handlers
-        private async void HeatmapToggle_Checked(object sender, RoutedEventArgs e)
-        {
-            _isHeatmapMode = true;
-            await UpdateHeatmapAsync();
-        }
-
-        private async void HeatmapToggle_Unchecked(object sender, RoutedEventArgs e)
-        {
-            _isHeatmapMode = false;
-
-            if (_mapProvider != null && _mapProvider.IsReady)
-            {
-                await _mapProvider.HideHeatmapAsync();
-
-                // Restore individual pins for currently displayed image
-                if (Predictions.Count > 0)
-                {
-                    await _mapProvider.ClearPinsAsync();
-
-                    foreach (var pred in Predictions)
-                    {
-                        await _mapProvider.AddPinAsync(
-                            pred.Latitude,
-                            pred.Longitude,
-                            pred.LocationSummary,
-                            pred.Probability,
-                            pred.Rank,
-                            isExif: pred.Rank == 0
-                        );
-                    }
-
-                    var first = Predictions[0];
-                    await _mapProvider.RotateToLocationAsync(first.Latitude, first.Longitude, 1500);
-                }
-            }
-        }
-
-        private async void OverlayAll_Click(object sender, RoutedEventArgs e)
-        {
-            // Get all selected images
-            var selected = ImageListView.SelectedItems.Cast<ImageQueueItem>().ToList();
-
-            if (selected.Count < 2)
-            {
-                ReliabilityMessage = "Select 2 or more images to overlay predictions";
-                return;
-            }
-
-            // Collect all predictions and show them as individual pins (overlay mode)
-            if (_mapProvider != null && _mapProvider.IsReady)
-            {
-                await _mapProvider.ClearPinsAsync();
-
-                int totalPins = 0;
-                foreach (var item in selected)
-                {
-                    var cached = await _cacheService.GetCachedPredictionAsync(item.FilePath);
-                    if (cached != null)
-                    {
-                        // Add EXIF GPS if available
-                        if (cached.ExifGps?.HasGps == true)
-                        {
-                            await _mapProvider.AddPinAsync(
-                                cached.ExifGps.Latitude,
-                                cached.ExifGps.Longitude,
-                                $"{item.FileName} (EXIF)",
-                                1.0,
-                                0,
-                                isExif: true
-                            );
-                            totalPins++;
-                        }
-
-                        // Add AI predictions
-                        for (int i = 0; i < Math.Min(3, cached.Predictions.Count); i++)
-                        {
-                            var pred = cached.Predictions[i];
-                            await _mapProvider.AddPinAsync(
-                                pred.Latitude,
-                                pred.Longitude,
-                                $"{item.FileName} (#{i + 1})",
-                                pred.Probability,
-                                i + 1,
-                                isExif: false
-                            );
-                            totalPins++;
-                        }
-                    }
-                }
-
-                ReliabilityMessage = $"Showing {totalPins} predictions from {selected.Count} images (overlay mode)";
-
-                System.Diagnostics.Debug.WriteLine($"[OverlayAll] Displayed {totalPins} pins from {selected.Count} images");
-            }
-        }
-
-        /// <summary>
-        /// Generate and display heatmap from selected images
-        /// </summary>
-        private async Task UpdateHeatmapAsync()
-        {
-            try
-            {
-                var selected = ImageListView.SelectedItems.Cast<ImageQueueItem>().ToList();
-
-                if (selected.Count < 2)
-                {
-                    ReliabilityMessage = "Select 2 or more images for heatmap visualization";
-                    return;
-                }
-
-                // Collect prediction results from selected images
-                var results = new List<EnhancedPredictionResult>();
-
-                foreach (var item in selected)
-                {
-                    var cached = await _cacheService.GetCachedPredictionAsync(item.FilePath);
-                    if (cached != null)
-                    {
-                        // Convert cached entry to EnhancedPredictionResult
-                        var result = new EnhancedPredictionResult
-                        {
-                            ImagePath = cached.FilePath,
-                            ExifGps = cached.ExifGps,
-                            AiPredictions = new List<EnhancedLocationPrediction>()
-                        };
-
-                        // Convert predictions
-                        for (int i = 0; i < cached.Predictions.Count; i++)
-                        {
-                            var pred = cached.Predictions[i];
-                            result.AiPredictions.Add(new EnhancedLocationPrediction
-                            {
-                                Rank = i + 1,
-                                Latitude = pred.Latitude,
-                                Longitude = pred.Longitude,
-                                Probability = pred.Probability,
-                                AdjustedProbability = pred.Probability,
-                                City = pred.City ?? "",
-                                State = pred.State ?? "",
-                                Country = pred.Country ?? "",
-                                LocationSummary = BuildLocationSummary(pred),
-                                ConfidenceLevel = ClassifyConfidence(pred.Probability)
-                            });
-                        }
-
-                        results.Add(result);
-                    }
-                }
-
-                if (results.Count < 2)
-                {
-                    ReliabilityMessage = "Not enough processed images for heatmap (minimum 2 required)";
-                    return;
-                }
-
-                // Generate heatmap
-                _currentHeatmap = _heatmapGenerator.GenerateHeatmap(results);
-
-                // Update status
-                ReliabilityMessage = $"Heatmap: {_currentHeatmap.TotalPredictions} predictions from {_currentHeatmap.ImageCount} images, {_currentHeatmap.Hotspots.Count} hotspot(s)";
-
-                // Display heatmap
-                if (_mapProvider != null && _mapProvider.IsReady)
-                {
-                    await _mapProvider.ShowHeatmapAsync(_currentHeatmap);
-                }
-
-                System.Diagnostics.Debug.WriteLine($"[Heatmap] Generated from {results.Count} images, {_currentHeatmap.TotalPredictions} predictions, {_currentHeatmap.Hotspots.Count} hotspots");
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[Heatmap] Error: {ex.Message}");
-                ReliabilityMessage = $"Heatmap error: {ex.Message}";
-            }
         }
 
         /// <summary>
