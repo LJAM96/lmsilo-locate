@@ -112,6 +112,7 @@
             <!-- Multi-Selection Toolbar (appears when 2+ images selected) -->
             <Border x:Name="MultiSelectToolbar"
                    Grid.Row="0"
+                   Canvas.ZIndex="100"
                    Background="{ThemeResource SystemFillColorAttentionBackgroundBrush}"
                    BorderBrush="{ThemeResource SystemFillColorAttentionBrush}"
                    BorderThickness="0,0,0,1"
@@ -508,7 +509,8 @@
                                 <DataTemplate x:DataType="local:EnhancedLocationPrediction">
                                     <Expander HorizontalAlignment="Stretch"
                                              HorizontalContentAlignment="Stretch"
-                                             Margin="0,0,0,8">
+                                             Margin="0,0,0,8"
+                                             Tapped="Prediction_Tapped">
 
                                         <Expander.Header>
                                             <Grid>
