@@ -126,21 +126,21 @@
                                Orientation="Horizontal"
                                Spacing="8">
                         <ToggleButton x:Name="HeatmapToggle"
-                                     Content="Heatmap"
                                      MinWidth="110"
                                      Checked="HeatmapToggle_Checked"
                                      Unchecked="HeatmapToggle_Unchecked">
-                            <ToggleButton.Icon>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
                                 <FontIcon Glyph="&#xE81E;"/>
-                            </ToggleButton.Icon>
+                                <TextBlock Text="Heatmap"/>
+                            </StackPanel>
                         </ToggleButton>
 
-                        <Button Content="Overlay All"
-                               MinWidth="110"
+                        <Button MinWidth="110"
                                Click="OverlayAll_Click">
-                            <Button.Icon>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
                                 <FontIcon Glyph="&#xE8B3;"/>
-                            </Button.Icon>
+                                <TextBlock Text="Overlay All"/>
+                            </StackPanel>
                         </Button>
                     </StackPanel>
 

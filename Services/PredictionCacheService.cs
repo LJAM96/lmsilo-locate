@@ -110,8 +110,8 @@ namespace GeoLens.Services
         {
             try
             {
-                using var stream = File.OpenRead(imagePath);
-                var hashBytes = await XxHash64.HashAsync(stream);
+                var fileBytes = await File.ReadAllBytesAsync(imagePath);
+                var hashBytes = XxHash64.Hash(fileBytes);
                 return Convert.ToHexString(hashBytes).ToLowerInvariant();
             }
             catch (Exception ex)

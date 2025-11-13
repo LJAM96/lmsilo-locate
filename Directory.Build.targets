@@ -1,29 +1,5 @@
 ﻿<Project>
-  <PropertyGroup>
-    <_WinUIToolVersion>1.8.250916003</_WinUIToolVersion>
-  </PropertyGroup>
-
-  <ItemGroup>
-    <_WinUIToolDir Include="$(NuGetPackageRoot)microsoft.windowsappsdk.winui\$(_WinUIToolVersion)\tools\net6.0\" Condition="Exists('$(NuGetPackageRoot)microsoft.windowsappsdk.winui\$(_WinUIToolVersion)\tools\net6.0\')" />
-    <_WinUIToolDir Include="$(NuGetPackageRoot)microsoft.windowsappsdk\$(_WinUIToolVersion)\tools\net6.0\" Condition="Exists('$(NuGetPackageRoot)microsoft.windowsappsdk\$(_WinUIToolVersion)\tools\net6.0\')" />
-    <_WinUIToolDir Include="$(NuGetPackageRoot)microsoft.windowsappsdk.winui\$(_WinUIToolVersion)\tools\net472\" Condition="Exists('$(NuGetPackageRoot)microsoft.windowsappsdk.winui\$(_WinUIToolVersion)\tools\net472\')" />
-    <_WinUIToolDir Include="$(NuGetPackageRoot)microsoft.windowsappsdk\$(_WinUIToolVersion)\tools\net472\" Condition="Exists('$(NuGetPackageRoot)microsoft.windowsappsdk\$(_WinUIToolVersion)\tools\net472\')" />
-  </ItemGroup>
-
-  <PropertyGroup>
-    <_PermissionsBinary Condition="Exists('$(NuGetPackageRoot)system.security.permissions\9.0.9\lib\net462\System.Security.Permissions.dll')">$(NuGetPackageRoot)system.security.permissions\9.0.9\lib\net462\System.Security.Permissions.dll</_PermissionsBinary>
-    <_PermissionsBinary Condition="$(_PermissionsBinary) == '' and Exists('$(NuGetPackageRoot)system.security.permissions\8.0.0\lib\net462\System.Security.Permissions.dll')">$(NuGetPackageRoot)system.security.permissions\8.0.0\lib\net462\System.Security.Permissions.dll</_PermissionsBinary>
-    <_PermissionsBinary Condition="$(_PermissionsBinary) == '' and Exists('$(NuGetPackageRoot)system.security.permissions\7.0.0\lib\net462\System.Security.Permissions.dll')">$(NuGetPackageRoot)system.security.permissions\7.0.0\lib\net462\System.Security.Permissions.dll</_PermissionsBinary>
-    <_PermissionsBinary Condition="$(_PermissionsBinary) == '' and Exists('$(NuGetPackageRoot)system.security.permissions\6.0.0\lib\net461\System.Security.Permissions.dll')">$(NuGetPackageRoot)system.security.permissions\6.0.0\lib\net461\System.Security.Permissions.dll</_PermissionsBinary>
-  </PropertyGroup>
-
-  <Target Name="EnsureXamlCompilerDependencies" BeforeTargets="MarkupCompilePass1">
-    <Message Text="Ensuring System.Security.Permissions for WinUI Xaml compiler" Importance="High" />
-    <Copy SourceFiles="$(_PermissionsBinary)"
-          DestinationFolder="%(_WinUIToolDir.FullPath)"
-          SkipUnchangedFiles="true"
-          Condition="$(_PermissionsBinary) != '' and %(_WinUIToolDir.Identity) != ''" />
-  </Target>
+  <!-- Removed custom XAML compiler dependency handling - using Windows App SDK defaults -->
 
   <!-- Download WebView2 Runtime installers if not present -->
   <Target Name="DownloadWebView2Runtime" BeforeTargets="BeforeBuild" Condition="'$(Configuration)' == 'Release'">

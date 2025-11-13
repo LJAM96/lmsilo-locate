@@ -536,12 +536,12 @@ namespace GeoLens.Views
         private async Task DisplayCachedPredictionsAsync(CachedPredictionEntry cached)
         {
             // Store current image data for export
-            _currentImagePath = cached.ImagePath;
+            _currentImagePath = cached.FilePath;
             _currentExifData = cached.ExifGps;
 
             // Load extended EXIF metadata for the panel
             var extractor = new ExifMetadataExtractor();
-            var extendedMetadata = await extractor.ExtractExtendedMetadataAsync(cached.ImagePath);
+            var extendedMetadata = await extractor.ExtractExtendedMetadataAsync(cached.FilePath);
             if (extendedMetadata != null)
             {
                 ExifPanel.LoadMetadata(extendedMetadata);
@@ -1059,7 +1059,7 @@ namespace GeoLens.Views
                         // Convert cached entry to EnhancedPredictionResult
                         var result = new EnhancedPredictionResult
                         {
-                            ImagePath = cached.ImagePath,
+                            ImagePath = cached.FilePath,
                             ExifGps = cached.ExifGps,
                             AiPredictions = new List<EnhancedLocationPrediction>()
                         };
