@@ -369,5 +369,39 @@ namespace GeoLens.Services.MapProviders
                 .Replace("\n", "\\n")
                 .Replace("\r", "\\r");
         }
+
+        /// <summary>
+        /// Capture a screenshot of the current map view
+        /// Returns the file path to the saved screenshot PNG
+        /// </summary>
+        public async Task<string?> CaptureScreenshotAsync()
+        {
+            if (!_isInitialized) return null;
+
+            try
+            {
+                // Create temp directory if it doesn't exist
+                var tempFolder = Path.GetTempPath();
+                var screenshotPath = Path.Combine(tempFolder, $"geolens_map_{Guid.NewGuid()}.png");
+
+                // Use WebView2's built-in screenshot capability
+                using (var stream = new FileStream(screenshotPath, FileMode.Create, FileAccess.Write))
+                {
+                    await _webView.CoreWebView2.CapturePreviewAsync(
+                        CoreWebView2CapturePreviewImageFormat.Png,
+                        stream.AsRandomAccessStream()
+                    );
+                }
+
+                Debug.WriteLine($"[LeafletMap] Screenshot captured: {screenshotPath}");
+                return screenshotPath;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[LeafletMap] ERROR capturing screenshot: {ex.Message}");
+                return null;
+            }
+        }
     }
+
 }

@@ -843,47 +843,52 @@ namespace GeoLens.Views
                 }
             }
 
-            // Call the existing export method (which will now include the map if available)
-            await ExportCurrentResultAsync(format, fileTypeDescription, fileExtension, mapImagePath);
+            try
+            {
+                // Call the existing export method (which will now include the map if available)
+                await ExportCurrentResultAsync(format, fileTypeDescription, fileExtension, mapImagePath);
+            }
+            finally
+            {
+                // Clean up temporary screenshot file
+                if (!string.IsNullOrEmpty(mapImagePath) && File.Exists(mapImagePath))
+                {
+                    try
+                    {
+                        File.Delete(mapImagePath);
+                        Debug.WriteLine($"[Export] Deleted temporary screenshot: {mapImagePath}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[Export] Failed to delete temporary screenshot: {ex.Message}");
+                    }
+                }
+            }
         }
 
         private async Task<string?> CaptureMapScreenshotAsync()
         {
             try
             {
-                // Create a temporary file path for the screenshot
-                var tempFolder = Path.GetTempPath();
-                var screenshotPath = Path.Combine(tempFolder, $"geolens_map_{Guid.NewGuid()}.png");
-
-                // Use WebView2 screenshot capability if available
+                // Use the map provider's screenshot capability
                 if (_mapProvider is LeafletMapProvider leafletProvider)
                 {
-                    // Get the WebView2 control from the map provider
-                    // For now, we'll use JavaScript to capture the map canvas
-                    var jsScript = @"
-                        (async function() {
-                            const map = window.leafletMap;
-                            if (!map) return null;
+                    var screenshotPath = await leafletProvider.CaptureScreenshotAsync();
 
-                            // Get the map container
-                            const container = map.getContainer();
-                            const canvas = await html2canvas(container, {
-                                useCORS: true,
-                                allowTaint: false,
-                                backgroundColor: '#1a1a1a'
-                            });
-
-                            return canvas.toDataURL('image/png');
-                        })();
-                    ";
-
-                    // Note: This is a simplified version. Full implementation would need html2canvas library
-                    // or use a different screenshot method
-                    Debug.WriteLine("[Export] Map screenshot capture not fully implemented yet");
-                    return null;
+                    if (!string.IsNullOrEmpty(screenshotPath) && File.Exists(screenshotPath))
+                    {
+                        Debug.WriteLine($"[Export] Map screenshot captured: {screenshotPath}");
+                        return screenshotPath;
+                    }
+                    else
+                    {
+                        Debug.WriteLine("[Export] Map screenshot capture returned null or file not found");
+                        return null;
+                    }
                 }
 
-                return screenshotPath;
+                Debug.WriteLine("[Export] Map provider is not LeafletMapProvider, cannot capture screenshot");
+                return null;
             }
             catch (Exception ex)
             {
