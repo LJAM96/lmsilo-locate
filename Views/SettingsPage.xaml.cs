@@ -47,13 +47,11 @@ namespace GeoLens.Views
                 };
 
                 // Prediction Settings
-                TopKSlider.Value = settings.TopKPredictions;
                 ExifGpsFirstToggle.IsOn = settings.ShowExifGpsFirst;
                 ClusteringToggle.IsOn = settings.EnableClustering;
 
                 // Map Settings
                 OfflineModeToggle.IsOn = settings.OfflineMode;
-                MapRenderModeCombo.SelectedIndex = (int)settings.RenderMode;
 
                 // Interface Settings
                 ShowThumbnailsToggle.IsOn = settings.ShowThumbnails;
@@ -179,13 +177,11 @@ namespace GeoLens.Views
                 };
 
                 // Prediction Settings
-                settings.TopKPredictions = (int)TopKSlider.Value;
                 settings.ShowExifGpsFirst = ExifGpsFirstToggle.IsOn;
                 settings.EnableClustering = ClusteringToggle.IsOn;
 
                 // Map Settings
                 settings.OfflineMode = OfflineModeToggle.IsOn;
-                settings.RenderMode = (MapRenderMode)MapRenderModeCombo.SelectedIndex;
 
                 // Interface Settings
                 settings.ShowThumbnails = ShowThumbnailsToggle.IsOn;
