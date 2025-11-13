@@ -206,7 +206,7 @@ namespace GeoLens.Views
                     // Get file info
                     var props = await file.GetBasicPropertiesAsync();
 
-                    BitmapImage thumbnailImage = new BitmapImage();
+                    BitmapImage? thumbnailImage = null;
 
                     try
                     {
@@ -218,6 +218,7 @@ namespace GeoLens.Views
 
                         if (thumbnail != null && thumbnail.Size > 0)
                         {
+                            thumbnailImage = new BitmapImage();
                             await thumbnailImage.SetSourceAsync(thumbnail);
                         }
                         else
@@ -228,14 +229,19 @@ namespace GeoLens.Views
                     catch (Exception ex)
                     {
                         // Fallback: Load the actual image file (common for WebP, HEIC)
-                        Debug.WriteLine($"[AddImages] Thumbnail failed for {file.Name}, loading full image: {ex.Message}");
+                        Debug.WriteLine($"[AddImages] Thumbnail failed for {file.Name}, trying direct load: {ex.Message}");
 
                         try
                         {
-                            using var stream = await file.OpenReadAsync();
+                            // Load image directly with decode scaling
+                            thumbnailImage = new BitmapImage();
+                            thumbnailImage.DecodePixelType = Microsoft.UI.Xaml.Media.Imaging.DecodePixelType.Logical;
                             thumbnailImage.DecodePixelWidth = 140;
-                            thumbnailImage.DecodePixelHeight = 140;
+
+                            using var stream = await file.OpenReadAsync();
                             await thumbnailImage.SetSourceAsync(stream);
+
+                            Debug.WriteLine($"[AddImages] Successfully loaded thumbnail for {file.Name} via direct decode");
                         }
                         catch (Exception innerEx)
                         {
@@ -1144,6 +1150,27 @@ namespace GeoLens.Views
             {
                 System.Diagnostics.Debug.WriteLine($"[Heatmap] Error: {ex.Message}");
                 ReliabilityMessage = $"Heatmap error: {ex.Message}";
+            }
+        }
+
+        /// <summary>
+        /// Handle prediction item tapped - focus map on that location
+        /// </summary>
+        private async void Prediction_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
+        {
+            if (sender is Microsoft.UI.Xaml.Controls.Expander expander &&
+                expander.DataContext is EnhancedLocationPrediction prediction)
+            {
+                // Focus map on this prediction
+                if (_mapProvider != null && _mapProvider.IsReady)
+                {
+                    await _mapProvider.RotateToLocationAsync(
+                        prediction.Latitude,
+                        prediction.Longitude,
+                        1000); // 1 second animation
+
+                    Debug.WriteLine($"[Prediction] Focused map on {prediction.LocationSummary} ({prediction.Latitude:F6}, {prediction.Longitude:F6})");
+                }
             }
         }
     }

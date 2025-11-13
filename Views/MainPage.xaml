@@ -508,7 +508,8 @@
                                 <DataTemplate x:DataType="local:EnhancedLocationPrediction">
                                     <Expander HorizontalAlignment="Stretch"
                                              HorizontalContentAlignment="Stretch"
-                                             Margin="0,0,0,8">
+                                             Margin="0,0,0,8"
+                                             Tapped="Prediction_Tapped">
 
                                         <Expander.Header>
                                             <Grid>
