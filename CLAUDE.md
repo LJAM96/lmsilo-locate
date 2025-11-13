@@ -4,12 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-GeoLens is a WinUI3 desktop application that provides AI-powered image geolocation using the GeoCLIP deep learning model. The app features a dark-themed interface with 3D globe visualization, intelligent caching, EXIF metadata extraction, and multi-format export capabilities. All AI inference runs locally (no cloud dependency).
+GeoLens is a WinUI3 desktop application that provides AI-powered image geolocation using the GeoCLIP deep learning model. The app features a dark-themed interface with 2D map visualization (Leaflet with dark theme), intelligent caching, EXIF metadata extraction, and multi-format export capabilities. All AI inference runs locally (no cloud dependency).
+
+**Current Status:** 85% feature complete. Core services fully implemented, UI functional, ready for alpha testing.
 
 **Key Technologies:**
 - Frontend: WinUI3 (Windows App SDK 1.8), C# 12, .NET 9
 - Backend: Python 3.11+, FastAPI, GeoCLIP 1.2.0, PyTorch 2.6.0
 - Architecture: C# desktop app launches embedded Python FastAPI service, communicates via HTTP
+
+**Supported Image Formats:**
+- `.jpg`/`.jpeg` - JPEG images (EXIF GPS supported)
+- `.png` - PNG images
+- `.bmp` - Bitmap images
+- `.gif` - GIF images
+- `.heic` - HEIC images (iPhone photos, EXIF GPS supported)
+- `.webp` - WebP images
 
 ## Build and Development Commands
 
@@ -52,29 +62,35 @@ python -m Core.smoke_test --device auto
 ```
 ┌─────────────────────────────────────────┐
 │    WinUI3 Frontend (GeoLens.csproj)    │
-│  - Image queue with drag-and-drop       │
-│  - 3D globe/2D map visualization        │
-│  - Prediction display with confidence   │
-│  - EXIF metadata extraction             │
+│  - Image queue with drag-and-drop  ✅   │
+│  - 2D map visualization (Leaflet)  ✅   │
+│  - Prediction display with confidence ✅│
+│  - EXIF metadata panel ✅               │
+│  - Multi-image heatmap ✅               │
 └─────────────────┬───────────────────────┘
                   │ HTTP/REST (localhost:8899)
 ┌─────────────────▼───────────────────────┐
-│   C# Service Layer (Planned)            │
-│  - PythonRuntimeManager                 │
-│  - HardwareDetectionService             │
-│  - GeoCLIPApiClient                     │
-│  - PredictionCacheService (SQLite)      │
-│  - ExifMetadataExtractor                │
-│  - GeographicClusterAnalyzer            │
-│  - MapProviders (online/offline)        │
+│   C# Service Layer (IMPLEMENTED) ✅     │
+│  - PythonRuntimeManager ✅              │
+│  - HardwareDetectionService ✅          │
+│  - GeoCLIPApiClient ✅                  │
+│  - PredictionCacheService (SQLite) ✅   │
+│  - ExifMetadataExtractor ✅             │
+│  - GeographicClusterAnalyzer ✅         │
+│  - PredictionProcessor ✅               │
+│  - ExportService (CSV/JSON/PDF/KML) ✅  │
+│  - LeafletMapProvider ✅                │
+│  - PredictionHeatmapGenerator ✅        │
+│  - UserSettingsService ✅               │
 └─────────────────┬───────────────────────┘
                   │ Process Management
 ┌─────────────────▼───────────────────────┐
-│  Python FastAPI Service                 │
-│  - api_service.py (HTTP endpoints)      │
-│  - llocale.predictor (GeoCLIP wrapper)  │
-│  - Automatic hardware detection         │
-│  - Reverse geocoding                    │
+│  Python FastAPI Service ✅              │
+│  - api_service.py (HTTP endpoints) ✅   │
+│  - llocale.predictor (GeoCLIP wrapper)✅│
+│  - Automatic hardware detection ✅      │
+│  - Reverse geocoding ✅                 │
+│  - Batch processing ✅                  │
 └─────────────────────────────────────────┘
 ```
 
@@ -114,25 +130,42 @@ The `.csproj` file contains critical fixes for WinUI3 COM activation issues in R
 
 ### Python Service Communication
 
-The C# app will launch the Python service as a subprocess using `PythonRuntimeManager` (to be implemented). The service:
+The C# app launches the Python service as a subprocess using `PythonRuntimeManager`. The service:
 - Runs on `localhost:8899` by default
-- Auto-detects GPU hardware (NVIDIA/AMD/CPU) and loads appropriate PyTorch variant
+- Auto-detects GPU hardware (NVIDIA/AMD/Intel Arc/CPU) and loads appropriate PyTorch variant
 - Supports offline mode via `hf_cache` parameter for air-gapped environments
-- Uses `lru_cache` to keep predictor in memory across requests
+- Uses `lru_cache` to keep predictor in memory across requests (maxsize=3)
+- LRU cache warms 3 device configurations for instant switching
 
-### Planned Service Implementations
+## Implementation Status
 
-See `Docs/02_Service_Implementations.md` for detailed code examples. Key services to implement:
+### ✅ FULLY IMPLEMENTED Services
 
-1. **HardwareDetectionService**: WMI-based GPU detection (NVIDIA/AMD/CPU)
-2. **PythonRuntimeManager**: Launch/manage embedded Python runtime, health checks
-3. **GeoCLIPApiClient**: HTTP client for `/health` and `/infer` endpoints
-4. **PredictionCacheService**: SQLite + XXHash64 for instant recall of previous predictions
-5. **ExifMetadataExtractor**: Extract GPS, camera info, capture settings from images
-6. **GeographicClusterAnalyzer**: Boost confidence when predictions cluster within 100km
-7. **PredictionProcessor**: Orchestrates cache → EXIF → API → clustering pipeline
-8. **MapProviders**: WebView2 with Three.js/globe.gl for 3D visualization, dark theme support
-9. **ExportService**: CSV, PDF (QuestPDF), KML export formats
+All core services are production-ready with comprehensive error handling:
+
+1. **HardwareDetectionService** (137 lines): WMI-based GPU detection for NVIDIA/AMD/Intel Arc
+2. **PythonRuntimeManager** (268 lines): Process lifecycle, health checks, progress reporting
+3. **GeoCLIPApiClient** (190 lines): HTTP client with batch processing and MD5 hashing
+4. **PredictionCacheService** (613 lines): Two-tier caching (memory + SQLite), XXHash64 fingerprinting
+5. **ExifMetadataExtractor** (472 lines): GPS, camera settings, capture metadata extraction
+6. **GeographicClusterAnalyzer** (295 lines): Haversine distance, confidence boosting, clustering
+7. **PredictionProcessor** (373 lines): Complete pipeline orchestration (cache → EXIF → API → cluster)
+8. **ExportService** (769 lines): CSV (CsvHelper), JSON, PDF (QuestPDF), KML (Google Earth)
+9. **LeafletMapProvider** (374 lines): WebView2 integration with dark theme, heatmap support
+10. **PredictionHeatmapGenerator** (374 lines): Gaussian smoothing, hotspot detection
+11. **UserSettingsService** (169 lines): JSON persistence with debounced saves
+
+### 🚧 IN PROGRESS
+
+- **MainPage.xaml.cs**: 95% complete, using mock data for development (needs removal)
+- **LoadingPage.xaml.cs**: Complete with progress bars and tips
+
+### ❌ PLANNED (Not Yet Implemented)
+
+1. **Hybrid Offline/Online Maps**: Bundle minimal tiles, stream high-quality when online
+2. **Installer Creation**: MSI/MSIX with embedded Python runtimes and models
+3. **Video Frame Extraction**: See "Future Features" below
+4. **Whisper Transcription**: See "Future Features" below
 
 ### Confidence Level System
 
@@ -161,6 +194,127 @@ When multiple images are selected:
 5. Toggle between individual pins and heatmap view
 
 See `Docs/05_Heatmap_MultiImage.md` for implementation details.
+
+## Future Planned Features
+
+### Video Frame Extraction for Geolocation
+
+**Status**: Planned for Phase 2 (Post-MVP)
+
+**Overview**: Allow users to upload video files and extract multiple frames for GeoCLIP processing, enabling geolocation of video footage.
+
+**Key Features**:
+- Support common video formats: `.mp4`, `.mov`, `.avi`, `.mkv`, `.webm`
+- Video preview with timeline scrubber
+- Frame extraction modes:
+  - **Manual Selection**: User clicks timeline to select specific frames
+  - **Interval Extraction**: Extract frames every N seconds
+  - **Smart Extraction**: Detect scene changes and extract representative frames
+- Batch process all selected frames through GeoCLIP pipeline
+- Video metadata extraction (duration, resolution, codec, GPS if available)
+- Export results with video timestamp references
+
+**Technical Architecture**:
+- Use FFmpeg.NET or FFMpegCore for video processing
+- Extract frames to temporary directory for processing
+- Store video path + timestamp in prediction cache
+- Display extracted frames in image queue with timestamp badges
+- Enable batch export with video source information
+
+**Implementation Priority**: Medium (after 3D globe and installer)
+
+See `Docs/15_Video_Frame_Extraction.md` (to be created) for detailed specifications.
+
+---
+
+### Whisper AI Transcription Module
+
+**Status**: Planned for Phase 3 (Future Major Feature)
+
+**Overview**: New dedicated screen for AI-powered audio/video transcription using OpenAI's Whisper model, with translation and speaker diarization capabilities.
+
+**Key Features**:
+- **Audio/Video Upload**:
+  - Audio formats: `.mp3`, `.wav`, `.flac`, `.m4a`, `.ogg`, `.wma`
+  - Video formats: `.mp4`, `.mov`, `.avi`, `.mkv`, `.webm` (extract audio)
+  - Drag-and-drop support
+  - Queue management for batch processing
+
+- **Whisper Model Integration**:
+  - Local inference (whisper.cpp or faster-whisper)
+  - Multiple model sizes (tiny, base, small, medium, large)
+  - Automatic language detection (99 languages)
+  - GPU acceleration (CUDA/ROCm) with CPU fallback
+  - Real-time progress tracking
+
+- **Transcription Features**:
+  - Word-level timestamps
+  - Automatic punctuation
+  - Speaker diarization (identify different speakers)
+  - Confidence scores per segment
+  - Export formats: TXT, SRT (subtitles), VTT, JSON
+
+- **Translation**:
+  - Translate to English from 99 source languages
+  - Preserve timestamps in translated output
+  - Side-by-side original/translation view
+
+- **UI Components**:
+  - Dedicated "Transcription" tab in NavigationView
+  - Audio waveform visualization
+  - Editable transcription text with sync to audio
+  - Speaker label assignment interface
+  - Export options with format selection
+
+**Technical Architecture**:
+```
+┌─────────────────────────────────────────┐
+│  Transcription UI (TranscriptionPage)   │
+│  - Audio queue management               │
+│  - Waveform visualization               │
+│  - Transcript editor                    │
+│  - Speaker diarization UI               │
+└─────────────────┬───────────────────────┘
+                  │ HTTP/REST (localhost:8900)
+┌─────────────────▼───────────────────────┐
+│  C# Service Layer                       │
+│  - WhisperRuntimeManager                │
+│  - WhisperApiClient                     │
+│  - AudioExtractionService (FFmpeg)      │
+│  - TranscriptionCacheService (SQLite)   │
+│  - SpeakerDiarizationService            │
+│  - TranscriptExportService              │
+└─────────────────┬───────────────────────┘
+                  │ Process Management
+┌─────────────────▼───────────────────────┐
+│  Python Whisper Service (FastAPI)       │
+│  - /transcribe endpoint                 │
+│  - /translate endpoint                  │
+│  - /identify-language endpoint          │
+│  - faster-whisper or whisper.cpp        │
+│  - pyannote.audio for diarization       │
+└─────────────────────────────────────────┘
+```
+
+**Implementation Strategy**:
+1. **Phase 3.1**: Basic Whisper integration (transcription only)
+2. **Phase 3.2**: Add translation support
+3. **Phase 3.3**: Add speaker diarization
+4. **Phase 3.4**: Advanced UI (waveform, editing, sync playback)
+
+**Model Options**:
+- **faster-whisper** (recommended): 4x faster than OpenAI Whisper, lower memory
+- **whisper.cpp**: C++ implementation, best for CPU inference
+- Bundle multiple model sizes: tiny (75MB), base (142MB), small (466MB)
+
+**Estimated Distribution Impact**:
+- Whisper models: +75MB to +1.5GB depending on bundled sizes
+- pyannote models: +500MB for speaker diarization
+- Total with all features: +2GB to distribution size
+
+**Implementation Priority**: Low (post-MVP, separate major feature)
+
+See `Docs/16_Whisper_Transcription.md` (to be created) for detailed specifications.
 
 ## Code Style and Conventions
 
@@ -207,20 +361,31 @@ Document manual verification steps in `Docs/` until automated tests are implemen
 
 The `Docs/` directory contains comprehensive design documents:
 
-| Document | Purpose |
-|----------|---------|
-| `00_IMPLEMENTATION_START_HERE.md` | Master implementation checklist with 7 phases |
-| `01_Architecture_Overview.md` | High-level system design and technology stack |
-| `02_Service_Implementations.md` | Detailed C# service code examples, error recovery patterns |
-| `03_Dark_Mode_Maps.md` | Map visualization specifications |
-| `04_UI_Wireframes.md` | Layout and design specifications |
-| `05_Heatmap_MultiImage.md` | Heatmap system design and implementation |
-| `06_Implementation_Roadmap.md` | 8-10 week phased timeline |
-| `07_Fluent_UI_Design.md` | Windows 11 Fluent Design guidelines |
-| `08_EXIF_Metadata_System.md` | EXIF extraction and display specifications |
-| `09_Testing_Strategy.md` | Unit/integration/UI testing, benchmarking, CI workflows |
-| `10_Deployment_and_CI.md` | GitHub Actions, versioning, installer creation, releases |
-| `11_Advanced_Features.md` | Post-MVP features: batch processing, video support, accuracy validation |
+| Document | Status | Purpose |
+|----------|--------|---------|
+| `00_IMPLEMENTATION_START_HERE.md` | ✅ Complete | Master implementation checklist with 7 phases (update needed) |
+| `01_Architecture_Overview.md` | ✅ Complete | High-level system design and technology stack |
+| `02_Service_Implementations.md` | ✅ Complete | Detailed C# service code examples (all implemented) |
+| `03_Dark_Mode_Maps.md` | ✅ Complete | Map visualization specifications (Leaflet implemented) |
+| `04_UI_Wireframes.md` | ✅ Complete | Layout and design specifications |
+| `05_Heatmap_MultiImage.md` | ✅ Complete | Heatmap system design (fully implemented) |
+| `06_Implementation_Roadmap.md` | 🔄 Outdated | 8-10 week phased timeline (needs update with current status) |
+| `07_Fluent_UI_Design.md` | ✅ Complete | Windows 11 Fluent Design guidelines |
+| `08_EXIF_Metadata_System.md` | ✅ Complete | EXIF extraction and display (fully implemented) |
+| `09_Testing_Strategy.md` | ✅ Complete | Unit/integration/UI testing, benchmarking, CI workflows |
+| `10_Deployment_and_CI.md` | ✅ Complete | GitHub Actions, versioning, installer creation, releases |
+| `11_Advanced_Features.md` | ✅ Complete | Post-MVP features: batch processing, video support, accuracy validation |
+| `12_Deployment_Strategy.md` | ✅ Complete | Distribution packaging and deployment |
+| `13_Phase4_Globe_Implementation.md` | 🚧 Pending | 3D Globe with Three.js/Globe.GL (not yet implemented) |
+| `14_Offline_Maps_Guide.md` | ✅ Complete | Offline map tile bundling guide |
+| `15_Video_Frame_Extraction.md` | ❌ To Create | Video frame extraction feature specification |
+| `16_Whisper_Transcription.md` | ❌ To Create | Whisper AI transcription module specification |
+
+**Legend**:
+- ✅ Complete: Document exists and is current
+- 🔄 Outdated: Document exists but needs updating
+- 🚧 Pending: Document exists but feature not implemented
+- ❌ To Create: Planned document for new feature
 
 Refer to these documents when implementing new features. They contain detailed code examples and specifications.
 
