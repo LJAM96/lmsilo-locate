@@ -92,7 +92,6 @@ namespace GeoLens.Views
         public MainPage()
         {
             this.InitializeComponent();
-            LoadMockData();
 
             // Wire up selection changed event
             ImageListView.SelectionChanged += ImageListView_SelectionChanged;
@@ -124,7 +123,7 @@ namespace GeoLens.Views
             {
                 System.Diagnostics.Debug.WriteLine("[MainPage] Initializing map...");
 
-                // Create Leaflet map provider (online mode with dark tiles)
+                // Create Leaflet map provider (hybrid mode: offline fallback with online tiles)
                 _mapProvider = new LeafletMapProvider(GlobeWebView, offlineMode: false);
 
                 // Initialize
@@ -134,26 +133,6 @@ namespace GeoLens.Views
                 GlobeLoadingOverlay.Visibility = Visibility.Collapsed;
 
                 System.Diagnostics.Debug.WriteLine("[MainPage] Map ready");
-
-                // If we already have mock predictions, add them to the map
-                if (Predictions.Count > 0)
-                {
-                    foreach (var pred in Predictions)
-                    {
-                        await _mapProvider.AddPinAsync(
-                            pred.Latitude,
-                            pred.Longitude,
-                            pred.LocationSummary,
-                            pred.Probability,
-                            pred.Rank,
-                            isExif: false
-                        );
-                    }
-
-                    // Rotate to first prediction
-                    var first = Predictions[0];
-                    await _mapProvider.RotateToLocationAsync(first.Latitude, first.Longitude, 1500);
-                }
             }
             catch (Exception ex)
             {
@@ -193,156 +172,6 @@ namespace GeoLens.Views
                     _isHeatmapMode = false;
                 }
             }
-        }
-
-        private void LoadMockData()
-        {
-            // Create mock image queue items
-            var mockImages = new[]
-            {
-                new ImageQueueItem
-                {
-                    FilePath = "C:\\Photos\\eiffel_tower.jpg",
-                    FileSizeBytes = 2_450_000,
-                    Status = QueueStatus.Done,
-                    IsCached = false,
-                    ThumbnailSource = CreateMockThumbnail("#8B4513")
-                },
-                new ImageQueueItem
-                {
-                    FilePath = "C:\\Photos\\temple_kyoto.jpg",
-                    FileSizeBytes = 3_120_000,
-                    Status = QueueStatus.Done,
-                    IsCached = true,
-                    ThumbnailSource = CreateMockThumbnail("#DC143C")
-                },
-                new ImageQueueItem
-                {
-                    FilePath = "C:\\Photos\\machu_picchu.jpg",
-                    FileSizeBytes = 1_890_000,
-                    Status = QueueStatus.Queued,
-                    IsCached = false,
-                    ThumbnailSource = CreateMockThumbnail("#228B22")
-                },
-                new ImageQueueItem
-                {
-                    FilePath = "C:\\Photos\\taj_mahal.jpg",
-                    FileSizeBytes = 2_780_000,
-                    Status = QueueStatus.Processing,
-                    IsCached = false,
-                    ThumbnailSource = CreateMockThumbnail("#FFD700")
-                },
-                new ImageQueueItem
-                {
-                    FilePath = "C:\\Photos\\grand_canyon.jpg",
-                    FileSizeBytes = 4_200_000,
-                    Status = QueueStatus.Queued,
-                    IsCached = false,
-                    ThumbnailSource = CreateMockThumbnail("#FF4500")
-                }
-            };
-
-            foreach (var item in mockImages)
-            {
-                ImageQueue.Add(item);
-            }
-
-            // Create mock predictions with various confidence levels
-            var mockPredictions = new[]
-            {
-                new EnhancedLocationPrediction
-                {
-                    Rank = 1,
-                    Latitude = 48.8584,
-                    Longitude = 2.2945,
-                    Probability = 0.342,
-                    AdjustedProbability = 0.342,
-                    City = "Paris",
-                    State = "Île-de-France",
-                    Country = "France",
-                    LocationSummary = "Paris, Île-de-France, France",
-                    IsPartOfCluster = false,
-                    ConfidenceLevel = ConfidenceLevel.High
-                },
-                new EnhancedLocationPrediction
-                {
-                    Rank = 2,
-                    Latitude = 48.8606,
-                    Longitude = 2.3376,
-                    Probability = 0.187,
-                    AdjustedProbability = 0.337, // Boosted by clustering
-                    City = "Paris",
-                    State = "Île-de-France",
-                    Country = "France",
-                    LocationSummary = "Paris (Central), France",
-                    IsPartOfCluster = true,
-                    ConfidenceLevel = ConfidenceLevel.High
-                },
-                new EnhancedLocationPrediction
-                {
-                    Rank = 3,
-                    Latitude = 48.8738,
-                    Longitude = 2.2950,
-                    Probability = 0.124,
-                    AdjustedProbability = 0.274, // Boosted by clustering
-                    City = "Neuilly-sur-Seine",
-                    State = "Île-de-France",
-                    Country = "France",
-                    LocationSummary = "Neuilly-sur-Seine, France",
-                    IsPartOfCluster = true,
-                    ConfidenceLevel = ConfidenceLevel.High
-                },
-                new EnhancedLocationPrediction
-                {
-                    Rank = 4,
-                    Latitude = 51.5074,
-                    Longitude = -0.1278,
-                    Probability = 0.082,
-                    AdjustedProbability = 0.082,
-                    City = "London",
-                    State = "England",
-                    Country = "United Kingdom",
-                    LocationSummary = "London, United Kingdom",
-                    IsPartOfCluster = false,
-                    ConfidenceLevel = ConfidenceLevel.Medium
-                },
-                new EnhancedLocationPrediction
-                {
-                    Rank = 5,
-                    Latitude = 52.5200,
-                    Longitude = 13.4050,
-                    Probability = 0.041,
-                    AdjustedProbability = 0.041,
-                    City = "Berlin",
-                    State = "Berlin",
-                    Country = "Germany",
-                    LocationSummary = "Berlin, Germany",
-                    IsPartOfCluster = false,
-                    ConfidenceLevel = ConfidenceLevel.Low
-                }
-            };
-
-            foreach (var prediction in mockPredictions)
-            {
-                Predictions.Add(prediction);
-            }
-
-            // Set EXIF GPS data (mock)
-            HasExifGps = false; // Set to true to show EXIF panel
-            ReliabilityMessage = "High reliability - predictions clustered within 12km";
-
-            OnPropertyChanged(nameof(QueueStatusMessage));
-        }
-
-        private ImageSource CreateMockThumbnail(string colorHex)
-        {
-            // Create a simple colored bitmap as a mock thumbnail
-            // In a real app, this would load the actual image thumbnail
-            var writeableBitmap = new WriteableBitmap(200, 200);
-
-            // For now, just return a placeholder
-            // The actual thumbnail loading would happen asynchronously
-            return writeableBitmap;
         }
 
         // Event Handlers

@@ -161,20 +161,12 @@ Users can upload:
 ## 🚧 In Progress / Needs Completion
 
 ### High Priority
-1. **Remove Mock Data**: MainPage.xaml.cs has `LoadMockData()` method for development
-2. **Real Image Integration**: Connect UI to actual service pipeline
+1. ✅ **Remove Mock Data**: COMPLETED - Removed `LoadMockData()` method
+2. **Hybrid Offline/Online Maps**: Bundle minimal tiles, stream high-quality when online
+3. **Test with Real Images**: Verify full pipeline works end-to-end
 
 ### Medium Priority
-3. **3D Globe Visualization**: GlobeMapProvider with Three.js/Globe.GL
-   - 2D Leaflet is fully functional as alternative
-   - 3D globe is "nice to have" not required
-
-### Low Priority
-4. **Offline Map Tiles**: Bundle MBTiles for offline use
-   - Online maps work perfectly
-   - Offline support is optional
-
-5. **Installer Creation**: MSI/MSIX with embedded Python runtimes
+4. **Installer Creation**: MSI/MSIX with embedded Python runtimes
    - Required for distribution
    - Development can continue without
 
@@ -245,9 +237,8 @@ Users can upload:
 | **2D Map (Leaflet)** | ✅ Complete | 100% |
 | **User Settings** | ✅ Complete | 100% |
 | **Loading Screen** | ✅ Complete | 100% |
-| **Main UI** | 🟡 In Progress | 95% |
-| **3D Globe** | ❌ Planned | 0% |
-| **Offline Tiles** | ❌ Planned | 0% |
+| **Main UI** | ✅ Complete | 100% (mock data removed) |
+| **Hybrid Offline/Online Maps** | 🟡 In Progress | 20% |
 | **Installer** | ❌ Planned | 0% |
 | **Video Frames** | ❌ Planned | 0% (spec complete) |
 | **Whisper Transcription** | ❌ Planned | 0% (spec complete) |

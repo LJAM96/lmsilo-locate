@@ -19,16 +19,15 @@
 - Loading screen with progress tracking
 
 ### 🚧 What Needs Completion
-- Remove mock data from MainPage.xaml.cs
-- 3D Globe visualization (GlobeMapProvider)
-- Offline map tiles bundling
+- ✅ Remove mock data from MainPage.xaml.cs (COMPLETED)
+- Hybrid offline/online map system (bundle minimal tiles, stream when online)
 - Installer creation (MSI/MSIX)
 
 ### 🆕 New Planned Features (Phase 2-3)
 - Video frame extraction for geolocation (See `15_Video_Frame_Extraction.md`)
 - Whisper AI transcription module (See `16_Whisper_Transcription.md`)
 
-**Next Steps**: Remove mock data, implement 3D globe, create installer, then move to Phase 2/3 features.
+**Next Steps**: Implement hybrid maps, create installer, test with real images, then move to Phase 2/3 features.
 
 ---
 

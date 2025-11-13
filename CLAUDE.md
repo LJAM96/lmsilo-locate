@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-GeoLens is a WinUI3 desktop application that provides AI-powered image geolocation using the GeoCLIP deep learning model. The app features a dark-themed interface with 2D map visualization (3D globe planned), intelligent caching, EXIF metadata extraction, and multi-format export capabilities. All AI inference runs locally (no cloud dependency).
+GeoLens is a WinUI3 desktop application that provides AI-powered image geolocation using the GeoCLIP deep learning model. The app features a dark-themed interface with 2D map visualization (Leaflet with dark theme), intelligent caching, EXIF metadata extraction, and multi-format export capabilities. All AI inference runs locally (no cloud dependency).
 
 **Current Status:** 85% feature complete. Core services fully implemented, UI functional, ready for alpha testing.
 
@@ -162,11 +162,10 @@ All core services are production-ready with comprehensive error handling:
 
 ### ❌ PLANNED (Not Yet Implemented)
 
-1. **3D Globe Visualization**: GlobeMapProvider with Three.js/Globe.GL (2D Leaflet fully functional)
-2. **Offline Map Tiles**: Pre-bundled MBTiles for offline use (online maps work)
-3. **Installer Creation**: MSI/MSIX with embedded Python runtimes and models
-4. **Video Frame Extraction**: See "Future Features" below
-5. **Whisper Transcription**: See "Future Features" below
+1. **Hybrid Offline/Online Maps**: Bundle minimal tiles, stream high-quality when online
+2. **Installer Creation**: MSI/MSIX with embedded Python runtimes and models
+3. **Video Frame Extraction**: See "Future Features" below
+4. **Whisper Transcription**: See "Future Features" below
 
 ### Confidence Level System
 

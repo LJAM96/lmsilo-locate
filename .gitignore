@@ -22,3 +22,6 @@ env/
 *.log
 .claude/
 .vs/
+
+# Map tiles (large, generated/downloaded separately)
+Assets/Maps/tiles/
