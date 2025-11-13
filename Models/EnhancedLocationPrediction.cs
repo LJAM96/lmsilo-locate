@@ -159,22 +159,23 @@ namespace GeoLens.Models
 
         /// <summary>
         /// Calculate confidence level based on probability and clustering
-        /// More realistic thresholds:
-        /// - High: >= 30% (strong confidence in location)
-        /// - Medium: >= 15% (moderate confidence)
-        /// - Low: < 15% (weak confidence, multiple possibilities)
+        /// Very conservative thresholds for honest assessment:
+        /// - High: >= 60% (very confident, more likely correct than wrong)
+        /// - Medium: >= 30% (moderate confidence, reasonable possibility)
+        /// - Low: < 30% (weak confidence, many possibilities)
+        /// Note: EXIF GPS data is classified as VeryHigh (100% accuracy)
         /// </summary>
         public static ConfidenceLevel ClassifyConfidence(double probability, bool isClustered)
         {
-            // High confidence: >= 30%
-            if (probability >= 0.30)
+            // High confidence: >= 60%
+            if (probability >= 0.60)
                 return ConfidenceLevel.High;
 
-            // Medium confidence: >= 15%
-            if (probability >= 0.15)
+            // Medium confidence: >= 30%
+            if (probability >= 0.30)
                 return ConfidenceLevel.Medium;
 
-            // Low confidence: < 15%
+            // Low confidence: < 30%
             return ConfidenceLevel.Low;
         }
 
