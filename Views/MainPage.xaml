@@ -542,60 +542,6 @@
                             </ItemsRepeater.ItemTemplate>
                         </ItemsRepeater>
                     </StackPanel>
-
-                    <!-- Export Actions -->
-                    <StackPanel Spacing="8">
-                        <TextBlock Text="Export"
-                                  FontSize="{StaticResource FontSizeSubtitle}"
-                                  FontWeight="SemiBold"/>
-
-                        <Grid ColumnSpacing="8" RowSpacing="8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition/>
-                                <RowDefinition/>
-                            </Grid.RowDefinitions>
-
-                            <Button Grid.Row="0" Grid.Column="0"
-                                   HorizontalAlignment="Stretch"
-                                   Click="ExportCsv_Click">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <FontIcon Glyph="&#xE8A5;"/>
-                                    <TextBlock Text="CSV"/>
-                                </StackPanel>
-                            </Button>
-
-                            <Button Grid.Row="0" Grid.Column="1"
-                                   HorizontalAlignment="Stretch"
-                                   Click="ExportPdf_Click">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <FontIcon Glyph="&#xE8A5;"/>
-                                    <TextBlock Text="PDF"/>
-                                </StackPanel>
-                            </Button>
-
-                            <Button Grid.Row="1" Grid.Column="0"
-                                   HorizontalAlignment="Stretch"
-                                   Click="ExportKml_Click">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <FontIcon Glyph="&#xE909;"/>
-                                    <TextBlock Text="KML"/>
-                                </StackPanel>
-                            </Button>
-
-                            <Button Grid.Row="1" Grid.Column="1"
-                                   HorizontalAlignment="Stretch"
-                                   Click="ExportJson_Click">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <FontIcon Glyph="&#xE8C8;"/>
-                                    <TextBlock Text="JSON"/>
-                                </StackPanel>
-                            </Button>
-                        </Grid>
-                    </StackPanel>
                 </StackPanel>
             </ScrollViewer>
         </Grid>
