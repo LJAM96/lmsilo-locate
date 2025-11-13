@@ -162,6 +162,30 @@ namespace GeoLens.Views
                     await UpdateHeatmapAsync();
                 }
             }
+            else if (selectedCount == 1)
+            {
+                // Single image selected - load its predictions
+                MultiSelectToolbar.Visibility = Visibility.Collapsed;
+
+                var selectedItem = ImageListView.SelectedItem as ImageQueueItem;
+                if (selectedItem != null && selectedItem.Status == QueueStatus.Completed)
+                {
+                    // Load cached predictions for this image
+                    var cached = await _cacheService.GetCachedPredictionAsync(selectedItem.FilePath);
+                    if (cached != null)
+                    {
+                        await DisplayCachedPredictionsAsync(cached);
+                        Debug.WriteLine($"[Selection] Loaded predictions for {selectedItem.FileName}");
+                    }
+                }
+
+                // Exit heatmap mode if active
+                if (_isHeatmapMode)
+                {
+                    HeatmapToggle.IsChecked = false;
+                    _isHeatmapMode = false;
+                }
+            }
             else
             {
                 MultiSelectToolbar.Visibility = Visibility.Collapsed;

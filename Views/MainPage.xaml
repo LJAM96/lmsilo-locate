@@ -112,6 +112,7 @@
             <!-- Multi-Selection Toolbar (appears when 2+ images selected) -->
             <Border x:Name="MultiSelectToolbar"
                    Grid.Row="0"
+                   Canvas.ZIndex="100"
                    Background="{ThemeResource SystemFillColorAttentionBackgroundBrush}"
                    BorderBrush="{ThemeResource SystemFillColorAttentionBrush}"
                    BorderThickness="0,0,0,1"
