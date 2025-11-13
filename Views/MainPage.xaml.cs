@@ -205,14 +205,44 @@ namespace GeoLens.Views
                     // Get file info
                     var props = await file.GetBasicPropertiesAsync();
 
-                    // Load thumbnail
-                    var thumbnail = await file.GetThumbnailAsync(
-                        Windows.Storage.FileProperties.ThumbnailMode.PicturesView,
-                        140,
-                        Windows.Storage.FileProperties.ThumbnailOptions.UseCurrentScale);
-
                     BitmapImage thumbnailImage = new BitmapImage();
-                    await thumbnailImage.SetSourceAsync(thumbnail);
+
+                    try
+                    {
+                        // Try to load Windows thumbnail first
+                        var thumbnail = await file.GetThumbnailAsync(
+                            Windows.Storage.FileProperties.ThumbnailMode.PicturesView,
+                            140,
+                            Windows.Storage.FileProperties.ThumbnailOptions.UseCurrentScale);
+
+                        if (thumbnail != null && thumbnail.Size > 0)
+                        {
+                            await thumbnailImage.SetSourceAsync(thumbnail);
+                        }
+                        else
+                        {
+                            throw new Exception("Thumbnail generation returned empty stream");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // Fallback: Load the actual image file (common for WebP, HEIC)
+                        Debug.WriteLine($"[AddImages] Thumbnail failed for {file.Name}, loading full image: {ex.Message}");
+
+                        try
+                        {
+                            using var stream = await file.OpenReadAsync();
+                            thumbnailImage.DecodePixelWidth = 140;
+                            thumbnailImage.DecodePixelHeight = 140;
+                            await thumbnailImage.SetSourceAsync(stream);
+                        }
+                        catch (Exception innerEx)
+                        {
+                            Debug.WriteLine($"[AddImages] Failed to load image {file.Name}: {innerEx.Message}");
+                            // Use null thumbnail - will show placeholder in UI
+                            thumbnailImage = null;
+                        }
+                    }
 
                     // Add to queue
                     var newImage = new ImageQueueItem
@@ -420,13 +450,14 @@ namespace GeoLens.Views
                 ExifLon = exifGps.LongitudeFormatted;
 
                 // Add EXIF GPS as a prediction (with VeryHigh confidence)
+                // Note: 90% confidence because EXIF data can be manually edited
                 var exifPrediction = new EnhancedLocationPrediction
                 {
                     Rank = 0, // Special rank for EXIF
                     Latitude = exifGps.Latitude,
                     Longitude = exifGps.Longitude,
-                    Probability = 1.0,
-                    AdjustedProbability = 1.0,
+                    Probability = 0.9,
+                    AdjustedProbability = 0.9,
                     City = "",
                     State = "",
                     Country = "",
@@ -444,7 +475,7 @@ namespace GeoLens.Views
                         exifGps.Latitude,
                         exifGps.Longitude,
                         "EXIF GPS Location",
-                        1.0,
+                        0.9,
                         0,
                         isExif: true
                     );
@@ -570,13 +601,14 @@ namespace GeoLens.Views
                 ExifLon = cached.ExifGps.LongitudeFormatted;
 
                 // Add EXIF GPS as a prediction (with VeryHigh confidence)
+                // Note: 90% confidence because EXIF data can be manually edited
                 var exifPrediction = new EnhancedLocationPrediction
                 {
                     Rank = 0, // Special rank for EXIF
                     Latitude = cached.ExifGps.Latitude,
                     Longitude = cached.ExifGps.Longitude,
-                    Probability = 1.0,
-                    AdjustedProbability = 1.0,
+                    Probability = 0.9,
+                    AdjustedProbability = 0.9,
                     City = "",
                     State = "",
                     Country = "",
@@ -594,7 +626,7 @@ namespace GeoLens.Views
                         cached.ExifGps.Latitude,
                         cached.ExifGps.Longitude,
                         "EXIF GPS Location",
-                        1.0,
+                        0.9,
                         0,
                         isExif: true
                     );

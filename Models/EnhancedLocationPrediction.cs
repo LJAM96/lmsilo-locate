@@ -1,13 +1,21 @@
 using Microsoft.UI.Xaml.Media;
 using System;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 
 namespace GeoLens.Models
 {
     /// <summary>
     /// Enhanced location prediction with confidence level and clustering information
     /// </summary>
-    public class EnhancedLocationPrediction
+    public class EnhancedLocationPrediction : INotifyPropertyChanged
     {
+        private double _adjustedProbability;
+        private bool _isPartOfCluster;
+        private ConfidenceLevel _confidenceLevel;
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
         public int Rank { get; set; }
         public double Latitude { get; set; }
         public double Longitude { get; set; }
@@ -21,23 +29,106 @@ namespace GeoLens.Models
         /// <summary>
         /// Probability adjusted for clustering bonus
         /// </summary>
-        public double AdjustedProbability { get; set; }
+        public double AdjustedProbability
+        {
+            get => _adjustedProbability;
+            set
+            {
+                if (_adjustedProbability != value)
+                {
+                    _adjustedProbability = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(ProbabilityFormatted));
+                }
+            }
+        }
 
         /// <summary>
         /// Whether this prediction is part of a geographic cluster
         /// </summary>
-        public bool IsPartOfCluster { get; set; }
+        public bool IsPartOfCluster
+        {
+            get => _isPartOfCluster;
+            set
+            {
+                if (_isPartOfCluster != value)
+                {
+                    _isPartOfCluster = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
 
         /// <summary>
         /// Confidence level classification
         /// </summary>
-        public ConfidenceLevel ConfidenceLevel { get; set; }
+        public ConfidenceLevel ConfidenceLevel
+        {
+            get => _confidenceLevel;
+            set
+            {
+                if (_confidenceLevel != value)
+                {
+                    _confidenceLevel = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(ConfidenceText));
+                    OnPropertyChanged(nameof(ConfidenceColor));
+                    OnPropertyChanged(nameof(ConfidenceGlyph));
+                }
+            }
+        }
+
+        // Calculated Properties
+        /// <summary>
+        /// The confidence boost applied due to clustering (difference between adjusted and original)
+        /// </summary>
+        public double ConfidenceBoost => AdjustedProbability - Probability;
+
+        /// <summary>
+        /// Whether this prediction received a confidence boost
+        /// </summary>
+        public bool HasBoost => ConfidenceBoost > 0.001; // Account for floating point precision
 
         // UI Helper Properties
         public string LatitudeFormatted => $"{Math.Abs(Latitude):F6}° {(Latitude >= 0 ? "N" : "S")}";
         public string LongitudeFormatted => $"{Math.Abs(Longitude):F6}° {(Longitude >= 0 ? "E" : "W")}";
         public string Coordinates => $"{LatitudeFormatted}, {LongitudeFormatted}";
-        public string ProbabilityFormatted => $"{AdjustedProbability:P1}";
+
+        /// <summary>
+        /// Original probability from AI model
+        /// </summary>
+        public string OriginalProbabilityFormatted => $"{Probability:P1}";
+
+        /// <summary>
+        /// Adjusted probability (after clustering boost)
+        /// </summary>
+        public string AdjustedProbabilityFormatted => $"{AdjustedProbability:P1}";
+
+        /// <summary>
+        /// Primary display probability (uses adjusted value)
+        /// </summary>
+        public string ProbabilityFormatted => AdjustedProbabilityFormatted;
+
+        /// <summary>
+        /// Boost amount as formatted percentage
+        /// </summary>
+        public string BoostFormatted => $"+{ConfidenceBoost:P1}";
+
+        /// <summary>
+        /// Full probability breakdown for display
+        /// Example: "3.2% base + 8.8% clustering boost = 12.0%"
+        /// </summary>
+        public string ProbabilityBreakdown
+        {
+            get
+            {
+                if (HasBoost)
+                {
+                    return $"{OriginalProbabilityFormatted} base + {BoostFormatted} clustering boost = {AdjustedProbabilityFormatted}";
+                }
+                return OriginalProbabilityFormatted;
+            }
+        }
 
         public string ConfidenceText => ConfidenceLevel switch
         {
@@ -68,14 +159,29 @@ namespace GeoLens.Models
 
         /// <summary>
         /// Calculate confidence level based on probability and clustering
+        /// Very conservative thresholds for honest assessment:
+        /// - High: >= 60% (very confident, more likely correct than wrong)
+        /// - Medium: >= 30% (moderate confidence, reasonable possibility)
+        /// - Low: < 30% (weak confidence, many possibilities)
+        /// Note: EXIF GPS data is classified as VeryHigh (90% - can be edited)
         /// </summary>
         public static ConfidenceLevel ClassifyConfidence(double probability, bool isClustered)
         {
-            if (probability > 0.1 || isClustered)
+            // High confidence: >= 60%
+            if (probability >= 0.60)
                 return ConfidenceLevel.High;
-            if (probability >= 0.05)
+
+            // Medium confidence: >= 30%
+            if (probability >= 0.30)
                 return ConfidenceLevel.Medium;
+
+            // Low confidence: < 30%
             return ConfidenceLevel.Low;
+        }
+
+        protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
     }
 }

@@ -28,6 +28,7 @@
                    IsBackButtonVisible="Collapsed"
                    IsSettingsVisible="False"
                    IsTitleBarAutoPaddingEnabled="False"
+                   IsPaneOpen="False"
                    OpenPaneLength="200"
                    CompactModeThresholdWidth="600"
                    ExpandedModeThresholdWidth="800"
@@ -194,10 +195,11 @@
                                           Stretch="UniformToFill"/>
 
                                     <!-- Processing Overlay -->
-                                    <Grid Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
-                                         Visibility="{x:Bind IsProcessing, Mode=OneWay}"
+                                    <Grid Visibility="{x:Bind IsProcessing, Mode=OneWay}"
                                          CornerRadius="6">
-                                        <ProgressRing IsActive="True" Width="28" Height="28"/>
+                                        <Border Background="#80000000"
+                                               CornerRadius="6"/>
+                                        <ProgressRing IsActive="True" Width="32" Height="32"/>
                                     </Grid>
 
                                     <!-- Cache Badge -->
@@ -595,9 +597,27 @@
                                                 </StackPanel>
                                             </Grid>
 
-                                            <TextBlock Text="{x:Bind ProbabilityFormatted}"
-                                                      FontSize="12"
-                                                      Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                            <!-- Probability Breakdown -->
+                                            <StackPanel Spacing="4">
+                                                <!-- Main probability display -->
+                                                <TextBlock Text="{x:Bind ProbabilityFormatted}"
+                                                          FontSize="13"
+                                                          FontWeight="SemiBold"
+                                                          Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
+
+                                                <!-- Clustering boost details (if applicable) -->
+                                                <StackPanel Spacing="2" Visibility="{x:Bind HasBoost}">
+                                                    <TextBlock FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                                                        <Run Text="Base:"/>
+                                                        <Run Text="{x:Bind OriginalProbabilityFormatted}" FontWeight="SemiBold"/>
+                                                    </TextBlock>
+                                                    <TextBlock FontSize="11" Foreground="{StaticResource ConfidenceHighBrush}">
+                                                        <Run Text="Boost:"/>
+                                                        <Run Text="{x:Bind BoostFormatted}" FontWeight="SemiBold"/>
+                                                        <Run Text="(clustering)"/>
+                                                    </TextBlock>
+                                                </StackPanel>
+                                            </StackPanel>
 
                                             <!-- Actions -->
                                             <Grid ColumnSpacing="8">

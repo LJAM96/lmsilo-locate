@@ -104,7 +104,9 @@ namespace GeoLens.Services
                     Rank = 0,
                     Latitude = result.ExifGps.Latitude,
                     Longitude = result.ExifGps.Longitude,
-                    Probability = 1.0,
+                    BaseProbability = 0.9, // 90% - EXIF can be edited
+                    ClusteringBoost = 0.0,
+                    FinalProbability = 0.9,
                     Location = result.ExifGps.LocationName ?? "Unknown",
                     ConfidenceLevel = "VeryHigh",
                     Altitude = result.ExifGps.Altitude
@@ -121,7 +123,9 @@ namespace GeoLens.Services
                     Rank = pred.Rank,
                     Latitude = pred.Latitude,
                     Longitude = pred.Longitude,
-                    Probability = pred.AdjustedProbability,
+                    BaseProbability = pred.Probability,
+                    ClusteringBoost = pred.ConfidenceBoost,
+                    FinalProbability = pred.AdjustedProbability,
                     Location = pred.LocationSummary,
                     ConfidenceLevel = pred.ConfidenceText,
                     IsPartOfCluster = pred.IsPartOfCluster
@@ -138,7 +142,9 @@ namespace GeoLens.Services
             public int Rank { get; set; }
             public double Latitude { get; set; }
             public double Longitude { get; set; }
-            public double Probability { get; set; }
+            public double BaseProbability { get; set; }
+            public double ClusteringBoost { get; set; }
+            public double FinalProbability { get; set; }
             public string Location { get; set; } = string.Empty;
             public string ConfidenceLevel { get; set; } = string.Empty;
             public bool IsPartOfCluster { get; set; }
@@ -216,7 +222,9 @@ namespace GeoLens.Services
                     Rank = p.Rank,
                     Latitude = p.Latitude,
                     Longitude = p.Longitude,
-                    Probability = p.AdjustedProbability,
+                    BaseProbability = p.Probability,
+                    ClusteringBoost = p.ConfidenceBoost,
+                    FinalProbability = p.AdjustedProbability,
                     City = p.City,
                     State = p.State,
                     County = p.County,
@@ -269,7 +277,9 @@ namespace GeoLens.Services
             public int Rank { get; set; }
             public double Latitude { get; set; }
             public double Longitude { get; set; }
-            public double Probability { get; set; }
+            public double BaseProbability { get; set; }
+            public double ClusteringBoost { get; set; }
+            public double FinalProbability { get; set; }
             public string City { get; set; } = string.Empty;
             public string State { get; set; } = string.Empty;
             public string County { get; set; } = string.Empty;
@@ -497,8 +507,16 @@ namespace GeoLens.Services
                             row.RelativeItem().Text($"#{pred.Rank}: {pred.LocationSummary}")
                                 .FontSize(11).Bold().FontColor(GetConfidenceColor(pred.ConfidenceLevel));
                             row.AutoItem().Text($"{pred.ProbabilityFormatted}")
-                                .FontSize(10).FontColor("#B0B0B0");
+                                .FontSize(10).FontWeight(QuestPDF.Infrastructure.FontWeight.Bold).FontColor("#FFFFFF");
                         });
+
+                        // Show probability breakdown if boost was applied
+                        if (pred.HasBoost)
+                        {
+                            inner.Item().Text($"Breakdown: {pred.ProbabilityBreakdown}")
+                                .FontSize(8).FontColor("#76FF03");
+                        }
+
                         inner.Item().Text($"Coordinates: {pred.Coordinates}")
                             .FontSize(9).FontColor("#E0E0E0");
                         inner.Item().Text($"Confidence: {pred.ConfidenceText}")
@@ -647,10 +665,18 @@ namespace GeoLens.Services
                     };
 
                     var description = $"Rank: {pred.Rank}\n" +
-                                     $"Probability: {pred.ProbabilityFormatted}\n" +
+                                     $"Final Probability: {pred.ProbabilityFormatted}\n" +
                                      $"Confidence: {pred.ConfidenceText}\n" +
                                      $"Coordinates: {pred.Coordinates}\n" +
                                      $"Location: {pred.LocationSummary}";
+
+                    if (pred.HasBoost)
+                    {
+                        description += $"\n\nProbability Breakdown:\n" +
+                                      $"  Base: {pred.OriginalProbabilityFormatted}\n" +
+                                      $"  Clustering Boost: {pred.BoostFormatted}\n" +
+                                      $"  Final: {pred.AdjustedProbabilityFormatted}";
+                    }
 
                     if (pred.IsPartOfCluster)
                     {
