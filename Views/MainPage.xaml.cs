@@ -168,7 +168,8 @@ namespace GeoLens.Views
                 MultiSelectToolbar.Visibility = Visibility.Collapsed;
 
                 var selectedItem = ImageListView.SelectedItem as ImageQueueItem;
-                if (selectedItem != null && selectedItem.Status == QueueStatus.Completed)
+                if (selectedItem != null &&
+                    (selectedItem.Status == QueueStatus.Done || selectedItem.Status == QueueStatus.Cached))
                 {
                     // Load cached predictions for this image
                     var cached = await _cacheService.GetCachedPredictionAsync(selectedItem.FilePath);
