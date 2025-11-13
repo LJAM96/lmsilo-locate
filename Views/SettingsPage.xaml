@@ -122,34 +122,6 @@
                 </Expander.HeaderTemplate>
 
                 <StackPanel Spacing="16" Margin="44,16,0,0">
-                    <!-- Top K -->
-                    <StackPanel Spacing="8">
-                        <TextBlock Text="Number of Predictions"
-                                  Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                        <Grid ColumnSpacing="12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <Slider x:Name="TopKSlider"
-                                   Grid.Column="0"
-                                   Minimum="1"
-                                   Maximum="20"
-                                   Value="5"
-                                   TickFrequency="1"
-                                   SnapsTo="Ticks"
-                                   Header="Top-K Predictions"
-                                   ValueChanged="OnSettingChanged"/>
-                            <TextBlock Grid.Column="1"
-                                      Text="{x:Bind TopKSlider.Value, Mode=OneWay}"
-                                      VerticalAlignment="Center"
-                                      FontWeight="SemiBold"
-                                      FontSize="16"
-                                      MinWidth="30"
-                                      TextAlignment="Right"/>
-                        </Grid>
-                    </StackPanel>
-
                     <!-- EXIF GPS First -->
                     <ToggleSwitch x:Name="ExifGpsFirstToggle"
                                  Header="Show EXIF GPS First"
@@ -190,25 +162,6 @@
                                  OnContent="Using local map tiles"
                                  OffContent="Using online map services"
                                  Toggled="OnSettingChanged"/>
-
-                    <!-- Map Render Mode -->
-                    <StackPanel Spacing="8">
-                        <TextBlock Text="Map Render Mode"
-                                  Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                        <ComboBox x:Name="MapRenderModeCombo"
-                                 SelectedIndex="0"
-                                 HorizontalAlignment="Stretch"
-                                 MinWidth="200"
-                                 SelectionChanged="OnSettingChanged">
-                            <ComboBoxItem Content="3D Globe (WebGL)"/>
-                            <ComboBoxItem Content="2D Flat Map"/>
-                            <ComboBoxItem Content="3D Globe (Win2D)"/>
-                        </ComboBox>
-                        <TextBlock Text="3D Globe requires WebView2 runtime"
-                                  Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                  FontSize="11"
-                                  TextWrapping="Wrap"/>
-                    </StackPanel>
                 </StackPanel>
             </Expander>
 
