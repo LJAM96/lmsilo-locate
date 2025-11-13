@@ -231,7 +231,7 @@ namespace GeoLens.Views
                     // Get file info
                     var props = await file.GetBasicPropertiesAsync();
 
-                    BitmapImage? thumbnailImage = null;
+                    Microsoft.UI.Xaml.Media.ImageSource? thumbnailImage = null;
 
                     try
                     {
@@ -243,8 +243,9 @@ namespace GeoLens.Views
 
                         if (thumbnail != null && thumbnail.Size > 0)
                         {
-                            thumbnailImage = new BitmapImage();
-                            await thumbnailImage.SetSourceAsync(thumbnail);
+                            var bitmapImage = new BitmapImage();
+                            await bitmapImage.SetSourceAsync(thumbnail);
+                            thumbnailImage = bitmapImage;
                         }
                         else
                         {
@@ -253,20 +254,51 @@ namespace GeoLens.Views
                     }
                     catch (Exception ex)
                     {
-                        // Fallback: Load the actual image file (common for WebP, HEIC)
-                        Debug.WriteLine($"[AddImages] Thumbnail failed for {file.Name}, trying direct load: {ex.Message}");
+                        // Fallback: Use BitmapDecoder for WebP/HEIC support
+                        Debug.WriteLine($"[AddImages] Thumbnail failed for {file.Name}, trying BitmapDecoder: {ex.Message}");
 
                         try
                         {
-                            // Load image directly with decode scaling
-                            thumbnailImage = new BitmapImage();
-                            thumbnailImage.DecodePixelType = Microsoft.UI.Xaml.Media.Imaging.DecodePixelType.Logical;
-                            thumbnailImage.DecodePixelWidth = 140;
-
                             using var stream = await file.OpenReadAsync();
-                            await thumbnailImage.SetSourceAsync(stream);
 
-                            Debug.WriteLine($"[AddImages] Successfully loaded thumbnail for {file.Name} via direct decode");
+                            // Use BitmapDecoder which supports WebP/HEIC
+                            var decoder = await Windows.Graphics.Imaging.BitmapDecoder.CreateAsync(stream);
+
+                            // Calculate thumbnail dimensions maintaining aspect ratio
+                            uint targetSize = 140;
+                            double scale = Math.Min(
+                                (double)targetSize / decoder.PixelWidth,
+                                (double)targetSize / decoder.PixelHeight
+                            );
+                            uint scaledWidth = (uint)(decoder.PixelWidth * scale);
+                            uint scaledHeight = (uint)(decoder.PixelHeight * scale);
+
+                            // Get scaled software bitmap
+                            var transform = new Windows.Graphics.Imaging.BitmapTransform
+                            {
+                                ScaledWidth = scaledWidth,
+                                ScaledHeight = scaledHeight,
+                                InterpolationMode = Windows.Graphics.Imaging.BitmapInterpolationMode.Fant
+                            };
+
+                            var softwareBitmap = await decoder.GetSoftwareBitmapAsync(
+                                Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8,
+                                Windows.Graphics.Imaging.BitmapAlphaMode.Premultiplied,
+                                transform,
+                                Windows.Graphics.Imaging.ExifOrientationMode.RespectExifOrientation,
+                                Windows.Graphics.Imaging.ColorManagementMode.ColorManageToSRgb
+                            );
+
+                            // Convert to WriteableBitmap for display
+                            var writeableBitmap = new Microsoft.UI.Xaml.Media.Imaging.WriteableBitmap(
+                                (int)scaledWidth,
+                                (int)scaledHeight
+                            );
+
+                            softwareBitmap.CopyToBuffer(writeableBitmap.PixelBuffer);
+                            thumbnailImage = writeableBitmap;
+
+                            Debug.WriteLine($"[AddImages] Successfully loaded thumbnail for {file.Name} via BitmapDecoder ({scaledWidth}x{scaledHeight})");
                         }
                         catch (Exception innerEx)
                         {

@@ -110,9 +110,10 @@
             </CommandBar>
 
             <!-- Multi-Selection Toolbar (appears when 2+ images selected) -->
+            <!-- Spans all rows as overlay to ensure it's on top of CommandBar -->
             <Border x:Name="MultiSelectToolbar"
-                   Grid.Row="0"
-                   Canvas.ZIndex="100"
+                   Grid.RowSpan="3"
+                   VerticalAlignment="Top"
                    Background="{ThemeResource SystemFillColorAttentionBackgroundBrush}"
                    BorderBrush="{ThemeResource SystemFillColorAttentionBrush}"
                    BorderThickness="0,0,0,1"
