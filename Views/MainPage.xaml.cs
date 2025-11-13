@@ -764,6 +764,45 @@ namespace GeoLens.Views
             {
                 ImageQueue.Remove(selectedItem);
                 OnPropertyChanged(nameof(QueueStatusMessage));
+                Debug.WriteLine($"[RemoveSelected] Removed {selectedItem.FileName}, {ImageQueue.Count} items remaining");
+            }
+            else
+            {
+                Debug.WriteLine("[RemoveSelected] No item selected");
+            }
+        }
+
+        private async void ClearAll_Click(object sender, RoutedEventArgs e)
+        {
+            // Show confirmation dialog
+            var dialog = new ContentDialog
+            {
+                Title = "Clear Queue",
+                Content = $"Are you sure you want to remove all {ImageQueue.Count} images from the queue?",
+                PrimaryButtonText = "Clear All",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = this.XamlRoot
+            };
+
+            var result = await dialog.ShowAsync();
+
+            if (result == ContentDialogResult.Primary)
+            {
+                ImageQueue.Clear();
+                Predictions.Clear();
+                _currentImagePath = null;
+                _currentExifData = null;
+                _currentClusterInfo = null;
+
+                // Clear map
+                if (_mapProvider != null && _mapProvider.IsReady)
+                {
+                    await _mapProvider.ClearPinsAsync();
+                }
+
+                OnPropertyChanged(nameof(QueueStatusMessage));
+                Debug.WriteLine("[ClearAll] Queue cleared");
             }
         }
 
@@ -1023,6 +1062,19 @@ namespace GeoLens.Views
         {
             // Get AI predictions (exclude EXIF which has Rank = 0)
             var aiPredictions = Predictions.Where(p => p.Rank > 0).ToList();
+
+            // Remove any duplicates based on coordinates (defensive check)
+            aiPredictions = aiPredictions
+                .GroupBy(p => new { p.Latitude, p.Longitude, p.Rank })
+                .Select(g => g.First())
+                .OrderBy(p => p.Rank)
+                .ToList();
+
+            Debug.WriteLine($"[BuildEnhancedPredictionResult] Returning {aiPredictions.Count} unique predictions");
+            foreach (var pred in aiPredictions)
+            {
+                Debug.WriteLine($"  - Rank {pred.Rank}: {pred.LocationSummary} ({pred.ProbabilityFormatted})");
+            }
 
             return new EnhancedPredictionResult
             {
