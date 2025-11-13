@@ -93,6 +93,10 @@
 
                 <AppBarSeparator/>
 
+                <AppBarButton Label="Export"
+                             Icon="Save"
+                             Click="ExportResult_Click"/>
+
                 <AppBarButton Label="Delete"
                              Icon="Delete"
                              Click="RemoveSelected_Click"/>

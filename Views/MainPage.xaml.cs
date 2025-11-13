@@ -28,6 +28,7 @@ namespace GeoLens.Views
         private IMapProvider? _mapProvider;
         private readonly PredictionCacheService _cacheService = new();
         private readonly GeographicClusterAnalyzer _clusterAnalyzer = new();
+        private readonly ExportService _exportService = new();
         private ClusterAnalysisResult? _currentClusterInfo;
 
         // Current image data
@@ -766,6 +767,131 @@ namespace GeoLens.Views
             }
         }
 
+        private async void ExportResult_Click(object sender, RoutedEventArgs e)
+        {
+            // Check if there are predictions to export
+            if (Predictions.Count == 0 || string.IsNullOrEmpty(_currentImagePath))
+            {
+                // Show info bar
+                var dialog = new ContentDialog
+                {
+                    Title = "No Results to Export",
+                    Content = "Please select and process an image first to see predictions that can be exported.",
+                    CloseButtonText = "OK",
+                    XamlRoot = this.XamlRoot
+                };
+                await dialog.ShowAsync();
+                return;
+            }
+
+            // Show a professional menu flyout with export format options
+            var flyout = new MenuFlyout();
+
+            var pdfItem = new MenuFlyoutItem
+            {
+                Text = "Export as PDF (Professional Report)",
+                Icon = new SymbolIcon(Symbol.Document)
+            };
+            pdfItem.Click += async (s, args) => await ExportWithMapAsync("pdf", "PDF Document", ".pdf");
+            flyout.Items.Add(pdfItem);
+
+            var jsonItem = new MenuFlyoutItem
+            {
+                Text = "Export as JSON (Data Export)",
+                Icon = new SymbolIcon(Symbol.Document)
+            };
+            jsonItem.Click += async (s, args) => await ExportWithMapAsync("json", "JSON File", ".json");
+            flyout.Items.Add(jsonItem);
+
+            var csvItem = new MenuFlyoutItem
+            {
+                Text = "Export as CSV (Spreadsheet)",
+                Icon = new SymbolIcon(Symbol.Document)
+            };
+            csvItem.Click += async (s, args) => await ExportWithMapAsync("csv", "CSV File", ".csv");
+            flyout.Items.Add(csvItem);
+
+            var kmlItem = new MenuFlyoutItem
+            {
+                Text = "Export as KML (Google Earth)",
+                Icon = new SymbolIcon(Symbol.Map)
+            };
+            kmlItem.Click += async (s, args) => await ExportWithMapAsync("kml", "KML File", ".kml");
+            flyout.Items.Add(kmlItem);
+
+            // Show the flyout at the button location
+            if (sender is FrameworkElement element)
+            {
+                flyout.ShowAt(element);
+            }
+        }
+
+        private async Task ExportWithMapAsync(string format, string fileTypeDescription, string fileExtension)
+        {
+            // Capture map screenshot if available
+            string? mapImagePath = null;
+            if (_mapProvider != null && _mapProvider.IsReady)
+            {
+                try
+                {
+                    // Capture map screenshot
+                    mapImagePath = await CaptureMapScreenshotAsync();
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[Export] Failed to capture map screenshot: {ex.Message}");
+                }
+            }
+
+            // Call the existing export method (which will now include the map if available)
+            await ExportCurrentResultAsync(format, fileTypeDescription, fileExtension, mapImagePath);
+        }
+
+        private async Task<string?> CaptureMapScreenshotAsync()
+        {
+            try
+            {
+                // Create a temporary file path for the screenshot
+                var tempFolder = Path.GetTempPath();
+                var screenshotPath = Path.Combine(tempFolder, $"geolens_map_{Guid.NewGuid()}.png");
+
+                // Use WebView2 screenshot capability if available
+                if (_mapProvider is LeafletMapProvider leafletProvider)
+                {
+                    // Get the WebView2 control from the map provider
+                    // For now, we'll use JavaScript to capture the map canvas
+                    var jsScript = @"
+                        (async function() {
+                            const map = window.leafletMap;
+                            if (!map) return null;
+
+                            // Get the map container
+                            const container = map.getContainer();
+                            const canvas = await html2canvas(container, {
+                                useCORS: true,
+                                allowTaint: false,
+                                backgroundColor: '#1a1a1a'
+                            });
+
+                            return canvas.toDataURL('image/png');
+                        })();
+                    ";
+
+                    // Note: This is a simplified version. Full implementation would need html2canvas library
+                    // or use a different screenshot method
+                    Debug.WriteLine("[Export] Map screenshot capture not fully implemented yet");
+                    return null;
+                }
+
+                return screenshotPath;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[Export] Error capturing map screenshot: {ex.Message}");
+                return null;
+            }
+        }
+
         private void NavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
         {
             if (args.SelectedItem is NavigationViewItem item)
@@ -790,7 +916,7 @@ namespace GeoLens.Views
         }
 
         // Export Helper Methods
-        private async Task ExportCurrentResultAsync(string format, string fileTypeDescription, string fileExtension)
+        private async Task ExportCurrentResultAsync(string format, string fileTypeDescription, string fileExtension, string? mapImagePath = null)
         {
             try
             {
@@ -811,7 +937,7 @@ namespace GeoLens.Views
                 var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
 
                 // Show file save picker
-                var suggestedFileName = $"{Path.GetFileNameWithoutExtension(_currentImagePath)}_predictions{fileExtension}";
+                var suggestedFileName = $"{Path.GetFileNameWithoutExtension(_currentImagePath)}_report{fileExtension}";
                 var outputPath = await _exportService.ShowSaveFilePickerAsync(
                     hwnd,
                     suggestedFileName,
@@ -851,7 +977,23 @@ namespace GeoLens.Views
                         {
                             System.Diagnostics.Debug.WriteLine($"[Export] Failed to load thumbnail: {ex.Message}");
                         }
-                        exportedPath = await _exportService.ExportToPdfAsync(result, outputPath, thumbnailBytes);
+
+                        // Load map image for PDF
+                        byte[]? mapBytes = null;
+                        if (!string.IsNullOrEmpty(mapImagePath) && File.Exists(mapImagePath))
+                        {
+                            try
+                            {
+                                mapBytes = await File.ReadAllBytesAsync(mapImagePath);
+                                Debug.WriteLine($"[Export] Loaded map image: {mapImagePath} ({mapBytes.Length} bytes)");
+                            }
+                            catch (Exception ex)
+                            {
+                                Debug.WriteLine($"[Export] Failed to load map image: {ex.Message}");
+                            }
+                        }
+
+                        exportedPath = await _exportService.ExportToPdfAsync(result, outputPath, thumbnailBytes, mapBytes);
                         break;
 
                     case "kml":
