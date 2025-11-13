@@ -235,7 +235,7 @@ namespace GeoLens.Views
 
                     try
                     {
-                        // Try to load Windows thumbnail first
+                        // Try to load Windows thumbnail first (works for JPEG/PNG)
                         var thumbnail = await file.GetThumbnailAsync(
                             Windows.Storage.FileProperties.ThumbnailMode.PicturesView,
                             140,
@@ -246,6 +246,7 @@ namespace GeoLens.Views
                             var bitmapImage = new BitmapImage();
                             await bitmapImage.SetSourceAsync(thumbnail);
                             thumbnailImage = bitmapImage;
+                            Debug.WriteLine($"[AddImages] Loaded thumbnail for {file.Name} via Windows thumbnail");
                         }
                         else
                         {
@@ -254,55 +255,66 @@ namespace GeoLens.Views
                     }
                     catch (Exception ex)
                     {
-                        // Fallback: Use BitmapDecoder for WebP/HEIC support
-                        Debug.WriteLine($"[AddImages] Thumbnail failed for {file.Name}, trying BitmapDecoder: {ex.Message}");
+                        // Fallback: Use ImageSharp for WebP/HEIC support (no codec required)
+                        Debug.WriteLine($"[AddImages] Windows thumbnail failed for {file.Name}, trying ImageSharp: {ex.Message}");
 
                         try
                         {
+                            // Load image using ImageSharp
                             using var stream = await file.OpenReadAsync();
+                            using var memStream = new MemoryStream();
+                            await stream.AsStreamForRead().CopyToAsync(memStream);
+                            memStream.Position = 0;
 
-                            // Use BitmapDecoder which supports WebP/HEIC
-                            var decoder = await Windows.Graphics.Imaging.BitmapDecoder.CreateAsync(stream);
+                            using var image = await SixLabors.ImageSharp.Image.LoadAsync(memStream);
 
-                            // Calculate thumbnail dimensions maintaining aspect ratio
-                            uint targetSize = 140;
+                            // Calculate thumbnail size maintaining aspect ratio
+                            int targetSize = 140;
                             double scale = Math.Min(
-                                (double)targetSize / decoder.PixelWidth,
-                                (double)targetSize / decoder.PixelHeight
+                                (double)targetSize / image.Width,
+                                (double)targetSize / image.Height
                             );
-                            uint scaledWidth = (uint)(decoder.PixelWidth * scale);
-                            uint scaledHeight = (uint)(decoder.PixelHeight * scale);
+                            int scaledWidth = (int)(image.Width * scale);
+                            int scaledHeight = (int)(image.Height * scale);
 
-                            // Get scaled software bitmap
-                            var transform = new Windows.Graphics.Imaging.BitmapTransform
+                            // Resize image
+                            image.Mutate(x => x.Resize(scaledWidth, scaledHeight));
+
+                            // Convert to BGRA8 byte array for WriteableBitmap
+                            var pixelData = new byte[scaledWidth * scaledHeight * 4];
+                            image.ProcessPixelRows(accessor =>
                             {
-                                ScaledWidth = scaledWidth,
-                                ScaledHeight = scaledHeight,
-                                InterpolationMode = Windows.Graphics.Imaging.BitmapInterpolationMode.Fant
-                            };
+                                int offset = 0;
+                                for (int y = 0; y < accessor.Height; y++)
+                                {
+                                    var row = accessor.GetRowSpan(y);
+                                    for (int x = 0; x < row.Length; x++)
+                                    {
+                                        var pixel = row[x];
+                                        // BGRA format
+                                        pixelData[offset++] = pixel.B;
+                                        pixelData[offset++] = pixel.G;
+                                        pixelData[offset++] = pixel.R;
+                                        pixelData[offset++] = pixel.A;
+                                    }
+                                }
+                            });
 
-                            var softwareBitmap = await decoder.GetSoftwareBitmapAsync(
-                                Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8,
-                                Windows.Graphics.Imaging.BitmapAlphaMode.Premultiplied,
-                                transform,
-                                Windows.Graphics.Imaging.ExifOrientationMode.RespectExifOrientation,
-                                Windows.Graphics.Imaging.ColorManagementMode.ColorManageToSRgb
-                            );
-
-                            // Convert to WriteableBitmap for display
+                            // Create WriteableBitmap and copy pixel data
                             var writeableBitmap = new Microsoft.UI.Xaml.Media.Imaging.WriteableBitmap(
-                                (int)scaledWidth,
-                                (int)scaledHeight
+                                scaledWidth,
+                                scaledHeight
                             );
 
-                            softwareBitmap.CopyToBuffer(writeableBitmap.PixelBuffer);
-                            thumbnailImage = writeableBitmap;
+                            using var pixelStream = writeableBitmap.PixelBuffer.AsStream();
+                            await pixelStream.WriteAsync(pixelData, 0, pixelData.Length);
 
-                            Debug.WriteLine($"[AddImages] Successfully loaded thumbnail for {file.Name} via BitmapDecoder ({scaledWidth}x{scaledHeight})");
+                            thumbnailImage = writeableBitmap;
+                            Debug.WriteLine($"[AddImages] Successfully loaded thumbnail for {file.Name} via ImageSharp ({scaledWidth}x{scaledHeight})");
                         }
                         catch (Exception innerEx)
                         {
-                            Debug.WriteLine($"[AddImages] Failed to load image {file.Name}: {innerEx.Message}");
+                            Debug.WriteLine($"[AddImages] Failed to load image {file.Name} with ImageSharp: {innerEx.Message}");
                             // Use null thumbnail - will show placeholder in UI
                             thumbnailImage = null;
                         }
