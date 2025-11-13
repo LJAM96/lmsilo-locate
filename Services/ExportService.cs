@@ -104,9 +104,9 @@ namespace GeoLens.Services
                     Rank = 0,
                     Latitude = result.ExifGps.Latitude,
                     Longitude = result.ExifGps.Longitude,
-                    BaseProbability = 1.0,
+                    BaseProbability = 0.9, // 90% - EXIF can be edited
                     ClusteringBoost = 0.0,
-                    FinalProbability = 1.0,
+                    FinalProbability = 0.9,
                     Location = result.ExifGps.LocationName ?? "Unknown",
                     ConfidenceLevel = "VeryHigh",
                     Altitude = result.ExifGps.Altitude

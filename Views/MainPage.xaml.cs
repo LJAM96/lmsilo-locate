@@ -450,13 +450,14 @@ namespace GeoLens.Views
                 ExifLon = exifGps.LongitudeFormatted;
 
                 // Add EXIF GPS as a prediction (with VeryHigh confidence)
+                // Note: 90% confidence because EXIF data can be manually edited
                 var exifPrediction = new EnhancedLocationPrediction
                 {
                     Rank = 0, // Special rank for EXIF
                     Latitude = exifGps.Latitude,
                     Longitude = exifGps.Longitude,
-                    Probability = 1.0,
-                    AdjustedProbability = 1.0,
+                    Probability = 0.9,
+                    AdjustedProbability = 0.9,
                     City = "",
                     State = "",
                     Country = "",
@@ -474,7 +475,7 @@ namespace GeoLens.Views
                         exifGps.Latitude,
                         exifGps.Longitude,
                         "EXIF GPS Location",
-                        1.0,
+                        0.9,
                         0,
                         isExif: true
                     );
@@ -600,13 +601,14 @@ namespace GeoLens.Views
                 ExifLon = cached.ExifGps.LongitudeFormatted;
 
                 // Add EXIF GPS as a prediction (with VeryHigh confidence)
+                // Note: 90% confidence because EXIF data can be manually edited
                 var exifPrediction = new EnhancedLocationPrediction
                 {
                     Rank = 0, // Special rank for EXIF
                     Latitude = cached.ExifGps.Latitude,
                     Longitude = cached.ExifGps.Longitude,
-                    Probability = 1.0,
-                    AdjustedProbability = 1.0,
+                    Probability = 0.9,
+                    AdjustedProbability = 0.9,
                     City = "",
                     State = "",
                     Country = "",
@@ -624,7 +626,7 @@ namespace GeoLens.Views
                         cached.ExifGps.Latitude,
                         cached.ExifGps.Longitude,
                         "EXIF GPS Location",
-                        1.0,
+                        0.9,
                         0,
                         isExif: true
                     );

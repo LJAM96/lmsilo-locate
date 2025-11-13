@@ -170,7 +170,7 @@ All core services are production-ready with comprehensive error handling:
 ### Confidence Level System
 
 Predictions are classified into 4 levels based on **adjusted probability** (after clustering boost):
-- **Very High**: EXIF GPS data (cyan pin, always shown first) - 100% accuracy from device GPS
+- **Very High**: EXIF GPS data (cyan pin, always shown first) - 90% confidence (EXIF can be edited)
 - **High**: Adjusted probability ≥ 60% (green) - very confident, more likely correct than wrong
 - **Medium**: Adjusted probability ≥ 30% (yellow) - moderate confidence, reasonable possibility
 - **Low**: Adjusted probability < 30% (red) - weak confidence, many possibilities

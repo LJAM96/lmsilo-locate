@@ -163,7 +163,7 @@ namespace GeoLens.Models
         /// - High: >= 60% (very confident, more likely correct than wrong)
         /// - Medium: >= 30% (moderate confidence, reasonable possibility)
         /// - Low: < 30% (weak confidence, many possibilities)
-        /// Note: EXIF GPS data is classified as VeryHigh (100% accuracy)
+        /// Note: EXIF GPS data is classified as VeryHigh (90% - can be edited)
         /// </summary>
         public static ConfidenceLevel ClassifyConfidence(double probability, bool isClustered)
         {
