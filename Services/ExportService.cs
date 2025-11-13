@@ -507,7 +507,7 @@ namespace GeoLens.Services
                             row.RelativeItem().Text($"#{pred.Rank}: {pred.LocationSummary}")
                                 .FontSize(11).Bold().FontColor(GetConfidenceColor(pred.ConfidenceLevel));
                             row.AutoItem().Text($"{pred.ProbabilityFormatted}")
-                                .FontSize(10).FontWeight(QuestPDF.Infrastructure.FontWeight.Bold).FontColor("#FFFFFF");
+                                .FontSize(10).Bold().FontColor("#FFFFFF");
                         });
 
                         // Show probability breakdown if boost was applied
