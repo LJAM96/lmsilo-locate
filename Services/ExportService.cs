@@ -309,7 +309,8 @@ namespace GeoLens.Services
         public async Task<string> ExportToPdfAsync(
             EnhancedPredictionResult result,
             string outputPath,
-            byte[]? thumbnailBytes = null)
+            byte[]? thumbnailBytes = null,
+            byte[]? mapImageBytes = null)
         {
             try
             {
@@ -331,7 +332,7 @@ namespace GeoLens.Services
 
                             page.Content().Element(content =>
                             {
-                                ComposeContent(content, result, thumbnailBytes);
+                                ComposeContent(content, result, thumbnailBytes, mapImageBytes);
                             });
 
                             page.Footer().Element(footer =>
@@ -435,7 +436,7 @@ namespace GeoLens.Services
             });
         }
 
-        private void ComposeContent(IContainer container, EnhancedPredictionResult result, byte[]? thumbnailBytes)
+        private void ComposeContent(IContainer container, EnhancedPredictionResult result, byte[]? thumbnailBytes, byte[]? mapImageBytes = null)
         {
             container.PaddingTop(10).Column(column =>
             {
@@ -445,6 +446,17 @@ namespace GeoLens.Services
                 if (thumbnailBytes != null && thumbnailBytes.Length > 0)
                 {
                     column.Item().AlignCenter().MaxWidth(300).Image(thumbnailBytes);
+                }
+
+                // Map visualization (if available)
+                if (mapImageBytes != null && mapImageBytes.Length > 0)
+                {
+                    column.Item().Column(mapSection =>
+                    {
+                        mapSection.Spacing(5);
+                        mapSection.Item().Text("Location Map").FontSize(14).Bold().FontColor("#4FC3F7");
+                        mapSection.Item().AlignCenter().MaxWidth(450).Border(2).BorderColor("#4FC3F7").Image(mapImageBytes);
+                    });
                 }
 
                 // Reliability message
@@ -507,7 +519,7 @@ namespace GeoLens.Services
                             row.RelativeItem().Text($"#{pred.Rank}: {pred.LocationSummary}")
                                 .FontSize(11).Bold().FontColor(GetConfidenceColor(pred.ConfidenceLevel));
                             row.AutoItem().Text($"{pred.ProbabilityFormatted}")
-                                .FontSize(10).FontWeight(QuestPDF.Infrastructure.FontWeight.Bold).FontColor("#FFFFFF");
+                                .FontSize(10).Bold().FontColor("#FFFFFF");
                         });
 
                         // Show probability breakdown if boost was applied

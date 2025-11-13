@@ -111,12 +111,42 @@ namespace GeoLens.Services
                     .Where(name => !string.IsNullOrEmpty(name))
                     .ToList();
 
-                // Return the first discrete GPU (not Intel integrated graphics)
-                var discreteGpu = gpus.FirstOrDefault(name =>
-                    !name.Contains("Intel", StringComparison.OrdinalIgnoreCase) ||
-                    name.Contains("Arc", StringComparison.OrdinalIgnoreCase)); // Intel Arc is discrete
+                // Filter out virtual/generic display adapters
+                var filteredGpus = gpus.Where(name =>
+                    !name.Contains("Virtual", StringComparison.OrdinalIgnoreCase) &&
+                    !name.Contains("Remote", StringComparison.OrdinalIgnoreCase) &&
+                    !name.Contains("Basic Display", StringComparison.OrdinalIgnoreCase) &&
+                    !name.Contains("Microsoft Basic", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
 
-                return discreteGpu ?? gpus.FirstOrDefault() ?? string.Empty;
+                // Prioritize NVIDIA, AMD, then Intel Arc, then any other GPU
+                var nvidiaGpu = filteredGpus.FirstOrDefault(name =>
+                    name.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase) ||
+                    name.Contains("GeForce", StringComparison.OrdinalIgnoreCase) ||
+                    name.Contains("RTX", StringComparison.OrdinalIgnoreCase) ||
+                    name.Contains("GTX", StringComparison.OrdinalIgnoreCase));
+
+                if (nvidiaGpu != null) return nvidiaGpu;
+
+                var amdGpu = filteredGpus.FirstOrDefault(name =>
+                    name.Contains("AMD", StringComparison.OrdinalIgnoreCase) ||
+                    name.Contains("Radeon", StringComparison.OrdinalIgnoreCase) ||
+                    name.Contains("RX ", StringComparison.OrdinalIgnoreCase));
+
+                if (amdGpu != null) return amdGpu;
+
+                var intelArcGpu = filteredGpus.FirstOrDefault(name =>
+                    name.Contains("Arc", StringComparison.OrdinalIgnoreCase) &&
+                    name.Contains("Intel", StringComparison.OrdinalIgnoreCase));
+
+                if (intelArcGpu != null) return intelArcGpu;
+
+                // Return first non-Intel integrated GPU, or any GPU if nothing else
+                return filteredGpus.FirstOrDefault(name =>
+                    !name.Contains("Intel", StringComparison.OrdinalIgnoreCase))
+                    ?? filteredGpus.FirstOrDefault()
+                    ?? gpus.FirstOrDefault()
+                    ?? string.Empty;
             }
             catch
             {
