@@ -27,9 +27,8 @@ namespace GeoLens.Views
         private string _reliabilityMessage = "No image selected";
         private IMapProvider? _mapProvider;
         private readonly PredictionCacheService _cacheService = new();
-        private readonly GeographicClusterAnalyzer _clusterAnalyzer = new();
         private readonly ExportService _exportService = new();
-        private ClusterAnalysisResult? _currentClusterInfo;
+        private bool _isLoadingPredictions = false;
 
         // Current image data
         private string _currentImagePath = "";
@@ -131,17 +130,33 @@ namespace GeoLens.Views
 
         private async void ImageListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
+            // Prevent concurrent execution to avoid duplicate predictions
+            if (_isLoadingPredictions)
+            {
+                Debug.WriteLine("[Selection] Already loading predictions, skipping...");
+                return;
+            }
+
             // Single selection mode - load predictions for selected image
             var selectedItem = ImageListView.SelectedItem as ImageQueueItem;
             if (selectedItem != null &&
                 (selectedItem.Status == QueueStatus.Done || selectedItem.Status == QueueStatus.Cached))
             {
-                // Load cached predictions for this image
-                var cached = await _cacheService.GetCachedPredictionAsync(selectedItem.FilePath);
-                if (cached != null)
+                try
                 {
-                    await DisplayCachedPredictionsAsync(cached);
-                    Debug.WriteLine($"[Selection] Loaded predictions for {selectedItem.FileName}");
+                    _isLoadingPredictions = true;
+
+                    // Load cached predictions for this image
+                    var cached = await _cacheService.GetCachedPredictionAsync(selectedItem.FilePath);
+                    if (cached != null)
+                    {
+                        await DisplayCachedPredictionsAsync(cached);
+                        Debug.WriteLine($"[Selection] Loaded predictions for {selectedItem.FileName}");
+                    }
+                }
+                finally
+                {
+                    _isLoadingPredictions = false;
                 }
             }
         }
@@ -307,20 +322,23 @@ namespace GeoLens.Views
             {
                 ReliabilityMessage = "Checking cache and processing images...";
 
-                var exifExtractor = new Services.ExifMetadataExtractor();
                 var uncachedImages = new List<ImageQueueItem>();
-                var exifData = new Dictionary<string, ExifGpsData?>();
                 int cachedCount = 0;
                 int processedCount = 0;
+                bool displayedFirst = false;
 
-                // Process each image: check cache first, then API if needed
-                foreach (var item in queuedImages)
+                // Step 1: Check cache for all images in parallel
+                var cacheCheckTasks = queuedImages.Select(async item =>
                 {
                     item.Status = QueueStatus.Processing;
-
-                    // Step 1: Check cache
                     var cached = await _cacheService.GetCachedPredictionAsync(item.FilePath);
+                    return (item, cached);
+                }).ToList();
 
+                var cacheResults = await Task.WhenAll(cacheCheckTasks);
+
+                foreach (var (item, cached) in cacheResults)
+                {
                     if (cached != null)
                     {
                         // Cache hit - instant result!
@@ -330,10 +348,11 @@ namespace GeoLens.Views
                         item.IsCached = true;
                         cachedCount++;
 
-                        // Display predictions for first image
-                        if (processedCount == 0)
+                        // Display predictions for first cached image
+                        if (!displayedFirst)
                         {
                             await DisplayCachedPredictionsAsync(cached);
+                            displayedFirst = true;
                         }
 
                         processedCount++;
@@ -343,15 +362,6 @@ namespace GeoLens.Views
                         // Cache miss - need to call API
                         System.Diagnostics.Debug.WriteLine($"[ProcessImages] Cache MISS for: {item.FileName}");
                         uncachedImages.Add(item);
-
-                        // Extract EXIF data for uncached images
-                        var gpsData = await exifExtractor.ExtractGpsDataAsync(item.FilePath);
-                        exifData[item.FilePath] = gpsData;
-
-                        if (gpsData?.HasGps == true)
-                        {
-                            System.Diagnostics.Debug.WriteLine($"[ProcessImages] Found GPS in {item.FileName}: {gpsData.Latitude:F6}, {gpsData.Longitude:F6}");
-                        }
                     }
                 }
 
@@ -361,7 +371,20 @@ namespace GeoLens.Views
                     ReliabilityMessage = $"Processing {uncachedImages.Count} image(s) via AI...";
 
                     var imagePaths = uncachedImages.Select(i => i.FilePath).ToList();
-                    var response = await App.ApiClient.InferBatchAsync(imagePaths, topK: 5);
+
+                    // Process API and EXIF extraction in parallel
+                    var apiTask = App.ApiClient.InferBatchAsync(imagePaths, topK: 5);
+                    var exifExtractor = new Services.ExifMetadataExtractor();
+                    var exifTasks = imagePaths.Select(path =>
+                        Task.Run(async () => (path, await exifExtractor.ExtractGpsDataAsync(path)))
+                    ).ToList();
+
+                    // Wait for both API and EXIF extraction to complete
+                    await Task.WhenAll(apiTask, Task.WhenAll(exifTasks));
+
+                    var response = await apiTask;
+                    var exifResults = await Task.WhenAll(exifTasks);
+                    var exifData = exifResults.ToDictionary(r => r.path, r => r.Item2);
 
                     // Process API results
                     if (response != null)
@@ -376,8 +399,15 @@ namespace GeoLens.Views
                                     imageItem.Status = QueueStatus.Done;
                                     imageItem.IsCached = false;
 
-                                    // Store in cache for future lookups
+                                    // Get EXIF data
                                     var gps = exifData.ContainsKey(result.Path) ? exifData[result.Path] : null;
+
+                                    if (gps?.HasGps == true)
+                                    {
+                                        System.Diagnostics.Debug.WriteLine($"[ProcessImages] Found GPS in {imageItem.FileName}: {gps.Latitude:F6}, {gps.Longitude:F6}");
+                                    }
+
+                                    // Store in cache for future lookups
                                     await _cacheService.StorePredictionAsync(
                                         result.Path,
                                         result.Predictions ?? new List<Services.DTOs.PredictionCandidate>(),
@@ -387,9 +417,10 @@ namespace GeoLens.Views
                                     System.Diagnostics.Debug.WriteLine($"[ProcessImages] Stored in cache: {System.IO.Path.GetFileName(result.Path)}");
 
                                     // Display predictions for first image if no cached images were shown
-                                    if (processedCount == cachedCount && imageItem == uncachedImages.First())
+                                    if (!displayedFirst)
                                     {
                                         await DisplayPredictionsAsync(result, gps);
+                                        displayedFirst = true;
                                     }
                                 }
                                 else
@@ -523,7 +554,7 @@ namespace GeoLens.Views
                         Latitude = pred.Latitude,
                         Longitude = pred.Longitude,
                         Probability = pred.Probability,
-                        AdjustedProbability = pred.Probability, // Will be updated by cluster analysis
+                        AdjustedProbability = pred.Probability,
                         City = pred.City ?? "",
                         State = pred.State ?? "",
                         County = pred.County ?? "",
@@ -549,39 +580,15 @@ namespace GeoLens.Views
                     }
                 }
 
-                // Run cluster analysis on AI predictions (exclude EXIF which has Rank = 0)
-                var aiPredictions = Predictions.Where(p => p.Rank > 0).ToList();
-                if (aiPredictions.Count >= 2)
-                {
-                    _currentClusterInfo = _clusterAnalyzer.AnalyzeClusters(aiPredictions);
-
-                    System.Diagnostics.Debug.WriteLine($"[DisplayPredictions] Cluster analysis: IsClustered={_currentClusterInfo.IsClustered}, Radius={_currentClusterInfo.ClusterRadius:F1}km");
-
-                    // Update ReliabilityMessage based on clustering (only if no EXIF GPS)
-                    if (!HasExifGps && _currentClusterInfo.IsClustered)
-                    {
-                        ReliabilityMessage = $"High reliability - predictions clustered within {_currentClusterInfo.ClusterRadius:F0}km";
-                    }
-                }
-                else
-                {
-                    _currentClusterInfo = null;
-                }
-
-                // Rotate to first location (EXIF if available, otherwise first AI prediction)
+                // Fit map to show all predictions
                 if (Predictions.Count > 0 && _mapProvider != null && _mapProvider.IsReady)
                 {
-                    var first = Predictions[0];
-                    await _mapProvider.RotateToLocationAsync(first.Latitude, first.Longitude, 1500);
+                    await _mapProvider.FitToMarkersAsync();
                 }
 
                 if (!HasExifGps)
                 {
-                    // Set default message if clustering didn't already set it
-                    if (_currentClusterInfo == null || !_currentClusterInfo.IsClustered)
-                    {
-                        ReliabilityMessage = $"Showing {result.Predictions.Count} AI predictions";
-                    }
+                    ReliabilityMessage = $"Showing {result.Predictions.Count} AI predictions";
                 }
             }
         }
@@ -674,7 +681,7 @@ namespace GeoLens.Views
                         Latitude = pred.Latitude,
                         Longitude = pred.Longitude,
                         Probability = pred.Probability,
-                        AdjustedProbability = pred.Probability, // Will be updated by cluster analysis
+                        AdjustedProbability = pred.Probability,
                         City = pred.City ?? "",
                         State = pred.State ?? "",
                         County = pred.County ?? "",
@@ -700,39 +707,15 @@ namespace GeoLens.Views
                     }
                 }
 
-                // Run cluster analysis on AI predictions (exclude EXIF which has Rank = 0)
-                var aiPredictions = Predictions.Where(p => p.Rank > 0).ToList();
-                if (aiPredictions.Count >= 2)
-                {
-                    _currentClusterInfo = _clusterAnalyzer.AnalyzeClusters(aiPredictions);
-
-                    System.Diagnostics.Debug.WriteLine($"[DisplayCachedPredictions] Cluster analysis: IsClustered={_currentClusterInfo.IsClustered}, Radius={_currentClusterInfo.ClusterRadius:F1}km");
-
-                    // Update ReliabilityMessage based on clustering (only if no EXIF GPS)
-                    if (!HasExifGps && _currentClusterInfo.IsClustered)
-                    {
-                        ReliabilityMessage = $"High reliability - predictions clustered within {_currentClusterInfo.ClusterRadius:F0}km (cached)";
-                    }
-                }
-                else
-                {
-                    _currentClusterInfo = null;
-                }
-
-                // Rotate to first location (EXIF if available, otherwise first AI prediction)
+                // Fit map to show all predictions
                 if (Predictions.Count > 0 && _mapProvider != null && _mapProvider.IsReady)
                 {
-                    var first = Predictions[0];
-                    await _mapProvider.RotateToLocationAsync(first.Latitude, first.Longitude, 1500);
+                    await _mapProvider.FitToMarkersAsync();
                 }
 
                 if (!HasExifGps)
                 {
-                    // Set default message if clustering didn't already set it
-                    if (_currentClusterInfo == null || !_currentClusterInfo.IsClustered)
-                    {
-                        ReliabilityMessage = $"Showing {cached.Predictions.Count} AI predictions (cached)";
-                    }
+                    ReliabilityMessage = $"Showing {cached.Predictions.Count} AI predictions (cached)";
                 }
             }
         }
@@ -791,9 +774,8 @@ namespace GeoLens.Views
             {
                 ImageQueue.Clear();
                 Predictions.Clear();
-                _currentImagePath = null;
+                _currentImagePath = "";
                 _currentExifData = null;
-                _currentClusterInfo = null;
 
                 // Clear map
                 if (_mapProvider != null && _mapProvider.IsReady)
@@ -1081,7 +1063,7 @@ namespace GeoLens.Views
                 ImagePath = _currentImagePath,
                 AiPredictions = aiPredictions,
                 ExifGps = _currentExifData,
-                ClusterInfo = _currentClusterInfo
+                ClusterInfo = null
             };
         }
 

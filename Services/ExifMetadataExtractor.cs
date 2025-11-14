@@ -203,17 +203,15 @@ namespace GeoLens.Services
                     return new ExifGpsData { HasGps = false };
                 }
 
-                // Parse latitude
-                var latArray = (BitmapTypedValue[])latitudeData[gpsLatPath].Value;
+                // Parse latitude - handle both BitmapTypedValue[] and UInt64[] formats
                 var latRef = latitudeRefData.ContainsKey(gpsLatRefPath) ?
                     latitudeRefData[gpsLatRefPath].Value?.ToString() : "N";
-                double latitude = ConvertGpsCoordinate(latArray, latRef ?? "N");
+                double latitude = ConvertGpsCoordinateValue(latitudeData[gpsLatPath].Value, latRef ?? "N");
 
-                // Parse longitude
-                var lonArray = (BitmapTypedValue[])longitudeData[gpsLonPath].Value;
+                // Parse longitude - handle both BitmapTypedValue[] and UInt64[] formats
                 var lonRef = longitudeRefData.ContainsKey(gpsLonRefPath) ?
                     longitudeRefData[gpsLonRefPath].Value?.ToString() : "E";
-                double longitude = ConvertGpsCoordinate(lonArray, lonRef ?? "E");
+                double longitude = ConvertGpsCoordinateValue(longitudeData[gpsLonPath].Value, lonRef ?? "E");
 
                 return new ExifGpsData
                 {
@@ -265,6 +263,58 @@ namespace GeoLens.Services
             {
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Convert GPS coordinate value - handles both BitmapTypedValue[] and UInt64[] formats
+        /// </summary>
+        private double ConvertGpsCoordinateValue(object value, string reference)
+        {
+            if (value == null)
+                return 0;
+
+            // Handle UInt64[] format (iPhone/modern cameras)
+            // Format: 3 packed rational values [degrees, minutes, seconds]
+            // Each UInt64 is packed as: (numerator << 32) | denominator
+            if (value is ulong[] ulongArray)
+            {
+                if (ulongArray.Length < 3)
+                    return 0;
+
+                // Unpack each rational value
+                double degrees = UnpackRational(ulongArray[0]);
+                double minutes = UnpackRational(ulongArray[1]);
+                double seconds = UnpackRational(ulongArray[2]);
+
+                double result = degrees + (minutes / 60.0) + (seconds / 3600.0);
+
+                if (reference == "S" || reference == "W")
+                    result = -result;
+
+                return result;
+            }
+
+            // Handle BitmapTypedValue[] format (older format)
+            if (value is BitmapTypedValue[] typedArray)
+            {
+                return ConvertGpsCoordinate(typedArray, reference);
+            }
+
+            return 0;
+        }
+
+        /// <summary>
+        /// Unpack a rational value from a UInt64 (denominator in high 32 bits, numerator in low 32 bits)
+        /// </summary>
+        private double UnpackRational(ulong packedValue)
+        {
+            uint denominator = (uint)(packedValue >> 32);
+            uint numerator = (uint)(packedValue & 0xFFFFFFFF);
+
+            if (denominator == 0)
+                return 0;
+
+            return (double)numerator / (double)denominator;
         }
 
         /// <summary>

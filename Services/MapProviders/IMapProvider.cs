@@ -38,6 +38,11 @@ namespace GeoLens.Services.MapProviders
         Task RotateToLocationAsync(double latitude, double longitude, int durationMs = 1000);
 
         /// <summary>
+        /// Fit the map view to show all markers
+        /// </summary>
+        Task FitToMarkersAsync();
+
+        /// <summary>
         /// Enable or disable heatmap visualization mode
         /// </summary>
         Task SetHeatmapModeAsync(bool enabled);

@@ -326,74 +326,21 @@
                     <views:ExifMetadataPanel x:Name="ExifPanel"
                                             Visibility="Collapsed"/>
 
-                    <!-- EXIF GPS Card (if available) -->
-                    <Expander x:Name="ExifGpsExpander"
-                             Header="GPS Metadata"
-                             IsExpanded="True"
-                             Visibility="{x:Bind HasExifGps, Mode=OneWay}">
-                        <Expander.HeaderTemplate>
-                            <DataTemplate>
-                                <StackPanel Orientation="Horizontal" Spacing="12">
-                                    <FontIcon Glyph="&#xE81D;"
-                                             Foreground="{StaticResource ConfidenceVeryHighBrush}"/>
-                                    <TextBlock Text="GPS Metadata" FontWeight="SemiBold"/>
-                                    <Border Background="{StaticResource ConfidenceVeryHighBrush}"
-                                           CornerRadius="4" Padding="8,2">
-                                        <TextBlock Text="VERY HIGH"
-                                                  FontSize="10"
-                                                  FontWeight="Bold"
-                                                  Foreground="Black"/>
-                                    </Border>
-                                </StackPanel>
-                            </DataTemplate>
-                        </Expander.HeaderTemplate>
-
-                        <StackPanel Spacing="8" Margin="0,12,0,0">
-                            <TextBlock Text="{x:Bind ExifLocationName, Mode=OneWay}"
-                                      FontSize="16"
-                                      FontWeight="SemiBold"/>
-
-                            <Grid ColumnSpacing="16">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-
-                                <StackPanel Grid.Column="0" Spacing="4">
-                                    <TextBlock Text="Latitude"
-                                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                              FontSize="11"/>
-                                    <TextBlock Text="{x:Bind ExifLat, Mode=OneWay}"
-                                              FontFamily="Consolas"
-                                              FontSize="13"/>
-                                </StackPanel>
-
-                                <StackPanel Grid.Column="1" Spacing="4">
-                                    <TextBlock Text="Longitude"
-                                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                              FontSize="11"/>
-                                    <TextBlock Text="{x:Bind ExifLon, Mode=OneWay}"
-                                              FontFamily="Consolas"
-                                              FontSize="13"/>
-                                </StackPanel>
-                            </Grid>
-                        </StackPanel>
-                    </Expander>
-
-                    <!-- Reliability Assessment -->
-                    <InfoBar IsOpen="True"
-                            Severity="Success"
-                            Message="{x:Bind ReliabilityMessage, Mode=OneWay}"
-                            IsClosable="False"/>
-
                     <!-- Export Feedback -->
                     <InfoBar x:Name="ExportFeedbackBar"
                             IsOpen="False"
                             IsClosable="True"/>
 
-                    <!-- AI Predictions Section -->
+                    <!-- Intelligence Only Warning -->
+                    <InfoBar IsOpen="True"
+                            Severity="Warning"
+                            Title="INTELLIGENCE ONLY"
+                            Message="This information is for intelligence purposes only and should not be used as evidence in legal proceedings."
+                            IsClosable="False"/>
+
+                    <!-- Predictions Section -->
                     <StackPanel Spacing="8">
-                        <TextBlock Text="AI Predictions"
+                        <TextBlock Text="Predictions"
                                   FontSize="{StaticResource FontSizeSubtitle}"
                                   FontWeight="SemiBold"/>
 
