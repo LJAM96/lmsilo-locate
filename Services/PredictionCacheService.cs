@@ -104,14 +104,14 @@ namespace GeoLens.Services
         }
 
         /// <summary>
-        /// Compute XXHash64 fingerprint of an image file
+        /// Compute XXHash64 fingerprint of an image file using streaming to avoid loading entire file into memory
         /// </summary>
         public async Task<string> ComputeImageHashAsync(string imagePath)
         {
             try
             {
-                var fileBytes = await File.ReadAllBytesAsync(imagePath);
-                var hashBytes = XxHash64.Hash(fileBytes);
+                await using var stream = File.OpenRead(imagePath);
+                var hashBytes = await XxHash64.HashAsync(stream);
                 return Convert.ToHexString(hashBytes).ToLowerInvariant();
             }
             catch (Exception ex)
@@ -144,7 +144,14 @@ namespace GeoLens.Services
                 if (_memoryCache.TryGetValue(imageHash, out var cachedEntry))
                 {
                     Interlocked.Increment(ref _cacheHits);
-                    await UpdateAccessTimeAsync(imageHash);
+                    // Update access time asynchronously (fire and forget with error handling)
+                    _ = UpdateAccessTimeAsync(imageHash).ContinueWith(t =>
+                    {
+                        if (t.IsFaulted)
+                        {
+                            Debug.WriteLine($"[PredictionCacheService] Failed to update access time for {imageHash}: {t.Exception?.GetBaseException().Message}");
+                        }
+                    }, TaskScheduler.Default);
                     Debug.WriteLine($"[PredictionCacheService] Memory cache hit for: {Path.GetFileName(imagePath)}");
                     return cachedEntry;
                 }
@@ -201,8 +208,14 @@ namespace GeoLens.Services
                         Interlocked.Increment(ref _cacheHits);
                         Debug.WriteLine($"[PredictionCacheService] Database cache hit for: {Path.GetFileName(imagePath)}");
 
-                        // Update access time asynchronously (fire and forget)
-                        _ = UpdateAccessTimeAsync(imageHash);
+                        // Update access time asynchronously (fire and forget with error handling)
+                        _ = UpdateAccessTimeAsync(imageHash).ContinueWith(t =>
+                        {
+                            if (t.IsFaulted)
+                            {
+                                Debug.WriteLine($"[PredictionCacheService] Failed to update access time for {imageHash}: {t.Exception?.GetBaseException().Message}");
+                            }
+                        }, TaskScheduler.Default);
 
                         return entry;
                     }
@@ -348,6 +361,12 @@ namespace GeoLens.Services
                 await _dbLock.WaitAsync();
                 try
                 {
+                    // Lock memory cache operations to prevent race conditions
+                    lock (_memoryCache)
+                    {
+                        _memoryCache.Clear();
+                    }
+
                     using var connection = new SQLiteConnection(_connectionString);
                     await connection.OpenAsync();
 
@@ -359,9 +378,6 @@ namespace GeoLens.Services
                     command.Parameters.AddWithValue("@days", expirationDays);
 
                     var deletedCount = await command.ExecuteNonQueryAsync();
-
-                    // Clear memory cache to ensure consistency
-                    _memoryCache.Clear();
 
                     Debug.WriteLine($"[PredictionCacheService] Cleared {deletedCount} expired entries (>{expirationDays} days old)");
                 }

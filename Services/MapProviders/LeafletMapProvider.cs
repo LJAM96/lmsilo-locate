@@ -78,7 +78,14 @@ namespace GeoLens.Services.MapProviders
                 void NavigationCompleted(WebView2 sender, CoreWebView2NavigationCompletedEventArgs args)
                 {
                     _webView.NavigationCompleted -= NavigationCompleted;
-                    tcs.SetResult(args.IsSuccess);
+                    // Check if already completed to prevent race condition
+                    if (!tcs.Task.IsCompleted)
+                    {
+                        if (args.IsSuccess)
+                            tcs.SetResult(true);
+                        else
+                            tcs.SetException(new Exception("WebView2 navigation failed"));
+                    }
                 }
                 _webView.NavigationCompleted += NavigationCompleted;
 

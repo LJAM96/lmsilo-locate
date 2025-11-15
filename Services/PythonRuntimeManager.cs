@@ -200,9 +200,6 @@ namespace GeoLens.Services
         /// </summary>
         public async Task<bool> CheckHealthAsync(CancellationToken cancellationToken = default)
         {
-            if (!IsRunning)
-                return false;
-
             try
             {
                 var response = await _healthCheckClient.GetAsync($"{BaseUrl}/health", cancellationToken);
@@ -266,17 +263,21 @@ namespace GeoLens.Services
         {
             try
             {
-                var process = Process.Start(new ProcessStartInfo
+                using var process = new Process
                 {
-                    FileName = _pythonExecutable,
-                    Arguments = "--version",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true
-                });
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = _pythonExecutable,
+                        Arguments = "--version",
+                        UseShellExecute = false,
+                        CreateNoWindow = true,
+                        RedirectStandardOutput = true
+                    }
+                };
 
-                process?.WaitForExit(2000);
-                return process?.ExitCode == 0;
+                process.Start();
+                process.WaitForExit(2000);
+                return process.ExitCode == 0;
             }
             catch
             {

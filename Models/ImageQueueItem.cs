@@ -11,6 +11,13 @@ namespace GeoLens.Models
     /// </summary>
     public class ImageQueueItem : INotifyPropertyChanged
     {
+        // Cached brushes to avoid allocating new brushes on every property access
+        private static readonly SolidColorBrush QueuedBrush = new(Microsoft.UI.Colors.Gray);
+        private static readonly SolidColorBrush ProcessingBrush = new(Microsoft.UI.Colors.DodgerBlue);
+        private static readonly SolidColorBrush DoneBrush = new(Microsoft.UI.Colors.LimeGreen);
+        private static readonly SolidColorBrush ErrorBrush = new(Microsoft.UI.Colors.IndianRed);
+        private static readonly SolidColorBrush CachedBrush = new(Microsoft.UI.Colors.Cyan);
+
         private QueueStatus _status;
         private bool _isSelected;
         private ImageSource? _thumbnailSource;
@@ -76,12 +83,12 @@ namespace GeoLens.Models
 
         public Brush StatusColor => Status switch
         {
-            QueueStatus.Queued => new SolidColorBrush(Microsoft.UI.Colors.Gray),
-            QueueStatus.Processing => new SolidColorBrush(Microsoft.UI.Colors.DodgerBlue),
-            QueueStatus.Done => new SolidColorBrush(Microsoft.UI.Colors.LimeGreen),
-            QueueStatus.Error => new SolidColorBrush(Microsoft.UI.Colors.IndianRed),
-            QueueStatus.Cached => new SolidColorBrush(Microsoft.UI.Colors.Cyan),
-            _ => new SolidColorBrush(Microsoft.UI.Colors.Gray)
+            QueueStatus.Queued => QueuedBrush,
+            QueueStatus.Processing => ProcessingBrush,
+            QueueStatus.Done => DoneBrush,
+            QueueStatus.Error => ErrorBrush,
+            QueueStatus.Cached => CachedBrush,
+            _ => QueuedBrush
         };
 
         public string StatusGlyph => Status switch

@@ -185,11 +185,14 @@ namespace GeoLens.Services
         {
             try
             {
+                // Enumerate once to avoid double enumeration
+                var resultsList = results.ToList();
+
                 var exportData = new JsonBatchExport
                 {
                     ExportDate = DateTime.UtcNow,
-                    TotalImages = results.Count(),
-                    Images = results.Select(BuildJsonExport).ToList()
+                    TotalImages = resultsList.Count,
+                    Images = resultsList.Select(BuildJsonExport).ToList()
                 };
 
                 var json = JsonSerializer.Serialize(exportData, _jsonOptions);

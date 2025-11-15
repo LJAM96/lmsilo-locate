@@ -16,6 +16,7 @@ namespace GeoLens.Views
         {
             InitializeComponent();
             Loaded += Page_Loaded;
+            Unloaded += Page_Unloaded;
         }
 
         private async void Page_Loaded(object sender, RoutedEventArgs e)
@@ -487,6 +488,15 @@ namespace GeoLens.Views
                 Debug.WriteLine($"[SettingsPage] Error clearing audit log: {ex.Message}");
                 await ShowErrorDialog("Error", $"Failed to clear audit log:\n{ex.Message}");
             }
+        }
+
+        private void Page_Unloaded(object sender, RoutedEventArgs e)
+        {
+            // Unsubscribe events
+            Loaded -= Page_Loaded;
+            Unloaded -= Page_Unloaded;
+
+            Debug.WriteLine("[SettingsPage] Page cleanup complete");
         }
     }
 }

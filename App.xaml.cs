@@ -91,6 +91,14 @@ namespace GeoLens
 
             if (servicesStarted)
             {
+                // Unsubscribe loading page events before navigation
+                if (_loadingPage != null)
+                {
+                    _loadingPage.RetryRequested -= LoadingPage_RetryRequested;
+                    _loadingPage.ExitRequested -= LoadingPage_ExitRequested;
+                    _loadingPage = null;
+                }
+
                 // Services ready - navigate to main page
                 var frame = new Frame { RequestedTheme = ElementTheme.Dark };
                 frame.NavigationFailed += OnNavigationFailed;
@@ -105,6 +113,14 @@ namespace GeoLens
             bool servicesStarted = await InitializeServicesWithProgressAsync();
             if (servicesStarted)
             {
+                // Unsubscribe loading page events before navigation
+                if (_loadingPage != null)
+                {
+                    _loadingPage.RetryRequested -= LoadingPage_RetryRequested;
+                    _loadingPage.ExitRequested -= LoadingPage_ExitRequested;
+                    _loadingPage = null;
+                }
+
                 var frame = new Frame { RequestedTheme = ElementTheme.Dark };
                 frame.NavigationFailed += OnNavigationFailed;
                 _mainWindow!.Content = frame;

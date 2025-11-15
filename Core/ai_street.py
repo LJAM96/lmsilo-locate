@@ -90,7 +90,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--extensions",
-        default=".jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff",
+        default=".jpg,.jpeg,.png,.webp,.bmp,.gif,.heic,.tif,.tiff",
         help=(
             "Comma-separated list of allowed image extensions for directory inputs "
             "(default: common image formats)."
@@ -157,7 +157,12 @@ def write_csv(path: Path, outcomes: Iterable[PredictionOutcome]) -> None:
                 }
             )
     ensure_output_directory(path)
-    pd.DataFrame(rows).to_csv(path, index=False)
+    pd.DataFrame(rows).to_csv(
+        path,
+        index=False,
+        float_format='%.10f',  # 10 decimal places for lat/lon precision
+        encoding='utf-8'
+    )
 
 
 def print_table(
@@ -213,8 +218,12 @@ def run_predictions(
 
     log_handle = None
     if log_file:
-        ensure_output_directory(log_file)
-        log_handle = log_file.open("w", encoding="utf-8")
+        try:
+            ensure_output_directory(log_file)
+            log_handle = log_file.open("w", encoding="utf-8")
+        except Exception as e:
+            print(f"Warning: Failed to open log file: {e}", file=sys.stderr)
+            # Continue without file logging
 
     progress_bar = None
     if show_progress and total > 1:
@@ -225,39 +234,52 @@ def run_predictions(
     failures = 0
     outcomes: List[PredictionOutcome] = []
 
-    for outcome in predictor.predict_records(records, top_k=top_k, skip_missing=skip_missing):
-        banner = outcome.record.banner(total)
-        if not quiet:
-            print(banner)
-        if log_handle:
-            log_handle.write(banner + "\n")
-
-        for warning in outcome.warnings:
-            message = f"  ! {warning}"
+    try:
+        for outcome in predictor.predict_records(records, top_k=top_k, skip_missing=skip_missing):
+            banner = outcome.record.banner(total)
             if not quiet:
+                print(banner)
+            if log_handle:
+                try:
+                    log_handle.write(banner + "\n")
+                except Exception as e:
+                    print(f"Warning: Failed to write to log file: {e}", file=sys.stderr)
+
+            for warning in outcome.warnings:
+                message = f"  ! {warning}"
+                if not quiet:
+                    print(message, file=sys.stderr)
+                if log_handle:
+                    try:
+                        log_handle.write(message + "\n")
+                    except Exception as e:
+                        print(f"Warning: Failed to write to log file: {e}", file=sys.stderr)
+
+            if outcome.error:
+                message = f"  ! {outcome.error}"
                 print(message, file=sys.stderr)
-            if log_handle:
-                log_handle.write(message + "\n")
+                if log_handle:
+                    try:
+                        log_handle.write(message + "\n")
+                    except Exception as e:
+                        print(f"Warning: Failed to write to log file: {e}", file=sys.stderr)
+                failures += 1
+            elif outcome.predictions:
+                print_table(outcome, quiet=quiet, log_handle=log_handle)
+            # Missing files with --skip-missing land here with warnings but no error and no predictions.
 
-        if outcome.error:
-            message = f"  ! {outcome.error}"
-            print(message, file=sys.stderr)
-            if log_handle:
-                log_handle.write(message + "\n")
-            failures += 1
-        elif outcome.predictions:
-            print_table(outcome, quiet=quiet, log_handle=log_handle)
-        # Missing files with --skip-missing land here with warnings but no error and no predictions.
+            outcomes.append(outcome)
 
-        outcomes.append(outcome)
-
+            if progress_bar:
+                progress_bar.update(1)
+    finally:
+        if log_handle:
+            try:
+                log_handle.close()
+            except Exception as e:
+                print(f"Warning: Failed to close log file: {e}", file=sys.stderr)
         if progress_bar:
-            progress_bar.update(1)
-
-    if log_handle:
-        log_handle.close()
-    if progress_bar:
-        progress_bar.close()
+            progress_bar.close()
 
     return_code = 0 if failures == 0 else 1
     return return_code, outcomes

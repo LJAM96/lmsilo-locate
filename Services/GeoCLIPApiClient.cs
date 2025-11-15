@@ -40,8 +40,19 @@ namespace GeoLens.Services
                 var response = await _httpClient.GetAsync("/health", cancellationToken);
                 return response.IsSuccessStatusCode;
             }
-            catch
+            catch (HttpRequestException ex)
             {
+                System.Diagnostics.Debug.WriteLine($"[GeoCLIPApiClient] Health check failed - network error: {ex.Message}");
+                return false;
+            }
+            catch (TaskCanceledException ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[GeoCLIPApiClient] Health check timed out: {ex.Message}");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[GeoCLIPApiClient] Health check failed - unexpected error: {ex.Message}");
                 return false;
             }
         }
@@ -169,9 +180,19 @@ namespace GeoLens.Services
                 var hash = md5.ComputeHash(stream);
                 return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
             }
+            catch (IOException ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[GeoCLIPApiClient] I/O error computing MD5 for {filePath}: {ex.Message}");
+                return null;
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[GeoCLIPApiClient] Access denied computing MD5 for {filePath}: {ex.Message}");
+                return null;
+            }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error computing MD5 for {filePath}: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[GeoCLIPApiClient] Unexpected error computing MD5 for {filePath}: {ex.Message}");
                 return null;
             }
         }

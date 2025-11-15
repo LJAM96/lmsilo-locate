@@ -17,6 +17,7 @@ using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading.Tasks;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Processing;
+using Windows.Graphics.Imaging;
 using MUXC = Microsoft.UI.Xaml.Controls;
 
 namespace GeoLens.Views
@@ -26,7 +27,6 @@ namespace GeoLens.Views
         private bool _hasExifGps;
         private string _reliabilityMessage = "No image selected";
         private IMapProvider? _mapProvider;
-        private readonly PredictionCacheService _cacheService = new();
         private readonly ExportService _exportService = new();
         private bool _isLoadingPredictions = false;
 
@@ -77,28 +77,43 @@ namespace GeoLens.Views
         {
             this.InitializeComponent();
 
-            // Wire up selection changed event
-            ImageListView.SelectionChanged += ImageListView_SelectionChanged;
-
             // Initialize map when page loads
             this.Loaded += MainPage_Loaded;
+            this.Unloaded += MainPage_Unloaded;
         }
 
         private async void MainPage_Loaded(object sender, RoutedEventArgs e)
         {
-            // Initialize cache service
-            try
+            // Cache service already initialized in App.xaml.cs
+            await InitializeMapAsync();
+        }
+
+        private void MainPage_Unloaded(object sender, RoutedEventArgs e)
+        {
+            // Clean up map provider
+            if (_mapProvider != null)
             {
-                await _cacheService.InitializeAsync();
-                System.Diagnostics.Debug.WriteLine("[MainPage] Cache service initialized");
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[MainPage] Cache initialization failed (non-fatal): {ex.Message}");
-                // Cache failure should not block app startup
+                try
+                {
+                    _mapProvider.Dispose();
+                    Debug.WriteLine("[MainPage] Map provider disposed");
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[MainPage] Error disposing map provider: {ex.Message}");
+                }
             }
 
-            await InitializeMapAsync();
+            // Clear collections to allow GC
+            ImageQueue.Clear();
+            Predictions.Clear();
+
+            // Unsubscribe events
+            ImageListView.SelectionChanged -= ImageListView_SelectionChanged;
+            this.Loaded -= MainPage_Loaded;
+            this.Unloaded -= MainPage_Unloaded;
+
+            Debug.WriteLine("[MainPage] Page cleanup complete");
         }
 
         private async Task InitializeMapAsync()
@@ -147,7 +162,7 @@ namespace GeoLens.Views
                     _isLoadingPredictions = true;
 
                     // Load cached predictions for this image
-                    var cached = await _cacheService.GetCachedPredictionAsync(selectedItem.FilePath);
+                    var cached = await App.CacheService.GetCachedPredictionAsync(selectedItem.FilePath);
                     if (cached != null)
                     {
                         await DisplayCachedPredictionsAsync(cached);
@@ -331,7 +346,7 @@ namespace GeoLens.Views
                 var cacheCheckTasks = queuedImages.Select(async item =>
                 {
                     item.Status = QueueStatus.Processing;
-                    var cached = await _cacheService.GetCachedPredictionAsync(item.FilePath);
+                    var cached = await App.CacheService.GetCachedPredictionAsync(item.FilePath);
                     return (item, cached);
                 }).ToList();
 
@@ -382,8 +397,8 @@ namespace GeoLens.Views
                     // Wait for both API and EXIF extraction to complete
                     await Task.WhenAll(apiTask, Task.WhenAll(exifTasks));
 
-                    var response = await apiTask;
-                    var exifResults = await Task.WhenAll(exifTasks);
+                    var response = apiTask.Result; // Already awaited, safe to use .Result
+                    var exifResults = Task.WhenAll(exifTasks).Result; // Already awaited, safe to use .Result
                     var exifData = exifResults.ToDictionary(r => r.path, r => r.Item2);
 
                     // Process API results
@@ -408,7 +423,7 @@ namespace GeoLens.Views
                                     }
 
                                     // Store in cache for future lookups
-                                    await _cacheService.StorePredictionAsync(
+                                    await App.CacheService.StorePredictionAsync(
                                         result.Path,
                                         result.Predictions ?? new List<Services.DTOs.PredictionCandidate>(),
                                         gps
@@ -733,8 +748,8 @@ namespace GeoLens.Views
         {
             return probability switch
             {
-                >= 0.1 => ConfidenceLevel.High,
-                >= 0.05 => ConfidenceLevel.Medium,
+                >= 0.60 => ConfidenceLevel.High,
+                >= 0.30 => ConfidenceLevel.Medium,
                 _ => ConfidenceLevel.Low
             };
         }
@@ -871,18 +886,10 @@ namespace GeoLens.Views
             }
             finally
             {
-                // Clean up temporary screenshot file
-                if (!string.IsNullOrEmpty(mapImagePath) && File.Exists(mapImagePath))
+                // Clean up temporary screenshot file with retry logic
+                if (!string.IsNullOrEmpty(mapImagePath))
                 {
-                    try
-                    {
-                        File.Delete(mapImagePath);
-                        Debug.WriteLine($"[Export] Deleted temporary screenshot: {mapImagePath}");
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[Export] Failed to delete temporary screenshot: {ex.Message}");
-                    }
+                    await CleanupScreenshotAsync(mapImagePath);
                 }
             }
         }
@@ -1106,6 +1113,50 @@ namespace GeoLens.Views
             ExportFeedbackBar.IsOpen = true;
         }
 
+        /// <summary>
+        /// Efficiently load thumbnail for an image using WinRT BitmapDecoder
+        /// This method scales the image during decoding to minimize memory usage
+        /// </summary>
+        private async Task<BitmapImage> LoadThumbnailAsync(string imagePath, int maxSize = 200)
+        {
+            await using var fileStream = File.OpenRead(imagePath);
+            using var memStream = new MemoryStream();
+
+            var decoder = await BitmapDecoder.CreateAsync(fileStream.AsRandomAccessStream());
+
+            // Calculate thumbnail size
+            double scale = Math.Min(maxSize / (double)decoder.PixelWidth, maxSize / (double)decoder.PixelHeight);
+            uint thumbnailWidth = (uint)(decoder.PixelWidth * scale);
+            uint thumbnailHeight = (uint)(decoder.PixelHeight * scale);
+
+            // Create scaled version
+            var transform = new BitmapTransform
+            {
+                ScaledWidth = thumbnailWidth,
+                ScaledHeight = thumbnailHeight,
+                InterpolationMode = BitmapInterpolationMode.Fant
+            };
+
+            var pixelData = await decoder.GetPixelDataAsync(
+                BitmapPixelFormat.Bgra8,
+                BitmapAlphaMode.Premultiplied,
+                transform,
+                ExifOrientationMode.RespectExifOrientation,
+                ColorManagementMode.ColorManageToSRgb
+            );
+
+            // Encode to stream
+            var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, memStream.AsRandomAccessStream());
+            encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied, thumbnailWidth, thumbnailHeight, 96, 96, pixelData.DetachPixelData());
+            await encoder.FlushAsync();
+
+            // Load into BitmapImage
+            memStream.Position = 0;
+            var bitmap = new BitmapImage();
+            await bitmap.SetSourceAsync(memStream.AsRandomAccessStream());
+            return bitmap;
+        }
+
         public event PropertyChangedEventHandler? PropertyChanged;
 
         private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
@@ -1130,6 +1181,36 @@ namespace GeoLens.Views
                         1000); // 1 second animation
 
                     Debug.WriteLine($"[Prediction] Focused map on {prediction.LocationSummary} ({prediction.Latitude:F6}, {prediction.Longitude:F6})");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Clean up temporary screenshot file with retry logic for file locking issues
+        /// </summary>
+        private async Task CleanupScreenshotAsync(string screenshotPath)
+        {
+            const int maxRetries = 3;
+            for (int i = 0; i < maxRetries; i++)
+            {
+                try
+                {
+                    if (File.Exists(screenshotPath))
+                    {
+                        File.Delete(screenshotPath);
+                        Debug.WriteLine($"[CleanupScreenshot] Deleted temporary screenshot: {screenshotPath}");
+                        return;
+                    }
+                }
+                catch (IOException) when (i < maxRetries - 1)
+                {
+                    // File is locked, wait and retry
+                    await Task.Delay(100 * (i + 1));
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[CleanupScreenshot] Failed to delete screenshot {screenshotPath}: {ex.Message}");
+                    return;
                 }
             }
         }

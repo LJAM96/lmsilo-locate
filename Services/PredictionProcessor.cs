@@ -3,7 +3,9 @@ using GeoLens.Services.DTOs;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -135,15 +137,66 @@ namespace GeoLens.Services
                 Debug.WriteLine($"[PredictionProcessor] Pipeline complete for: {fileName}");
                 return result;
             }
-            catch (Exception ex)
+            catch (HttpRequestException ex)
             {
-                Debug.WriteLine($"[PredictionProcessor] Pipeline error: {ex.Message}");
+                Debug.WriteLine($"[PredictionProcessor] Network error in pipeline: {ex.Message}");
 
                 // Log failed processing to audit
                 stopwatch.Stop();
-                await LogAuditAsync(imagePath, fileName, imageHash ?? "unknown", new List<PredictionCandidate>(), false, stopwatch.ElapsedMilliseconds, false, ex.Message);
+                await LogAuditAsync(imagePath, fileName, imageHash ?? "unknown", new List<PredictionCandidate>(), false, stopwatch.ElapsedMilliseconds, false, $"Network error: {ex.Message}");
 
-                return CreateEmptyResult(imagePath, null, $"Pipeline error: {ex.Message}");
+                return CreateEmptyResult(imagePath, null, $"Network error: Unable to connect to GeoCLIP service");
+            }
+            catch (TaskCanceledException ex)
+            {
+                Debug.WriteLine($"[PredictionProcessor] Pipeline cancelled or timed out: {ex.Message}");
+
+                // Log cancelled processing to audit
+                stopwatch.Stop();
+                await LogAuditAsync(imagePath, fileName, imageHash ?? "unknown", new List<PredictionCandidate>(), false, stopwatch.ElapsedMilliseconds, false, "Operation cancelled or timed out");
+
+                return CreateEmptyResult(imagePath, null, "Operation cancelled or timed out");
+            }
+            catch (OperationCanceledException ex)
+            {
+                Debug.WriteLine($"[PredictionProcessor] Pipeline operation cancelled: {ex.Message}");
+
+                // Log cancelled processing to audit
+                stopwatch.Stop();
+                await LogAuditAsync(imagePath, fileName, imageHash ?? "unknown", new List<PredictionCandidate>(), false, stopwatch.ElapsedMilliseconds, false, "Operation cancelled");
+
+                return CreateEmptyResult(imagePath, null, "Operation cancelled");
+            }
+            catch (IOException ex)
+            {
+                Debug.WriteLine($"[PredictionProcessor] File I/O error in pipeline: {ex.Message}");
+
+                // Log failed processing to audit
+                stopwatch.Stop();
+                await LogAuditAsync(imagePath, fileName, imageHash ?? "unknown", new List<PredictionCandidate>(), false, stopwatch.ElapsedMilliseconds, false, $"I/O error: {ex.Message}");
+
+                return CreateEmptyResult(imagePath, null, $"File I/O error: {ex.Message}");
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                Debug.WriteLine($"[PredictionProcessor] Access denied in pipeline: {ex.Message}");
+
+                // Log failed processing to audit
+                stopwatch.Stop();
+                await LogAuditAsync(imagePath, fileName, imageHash ?? "unknown", new List<PredictionCandidate>(), false, stopwatch.ElapsedMilliseconds, false, $"Access denied: {ex.Message}");
+
+                return CreateEmptyResult(imagePath, null, $"Access denied: {ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[PredictionProcessor] UNEXPECTED pipeline error: {ex.GetType().Name} - {ex.Message}");
+                Debug.WriteLine($"[PredictionProcessor] Stack trace: {ex.StackTrace}");
+
+                // Log failed processing to audit
+                stopwatch.Stop();
+                await LogAuditAsync(imagePath, fileName, imageHash ?? "unknown", new List<PredictionCandidate>(), false, stopwatch.ElapsedMilliseconds, false, $"Unexpected error: {ex.Message}");
+
+                return CreateEmptyResult(imagePath, null, $"Unexpected error: {ex.Message}");
             }
         }
 
@@ -217,9 +270,13 @@ namespace GeoLens.Services
 
                 Debug.WriteLine($"[PredictionProcessor] Batch complete: {results.Count} results ({cachedCount} from cache)");
             }
+            catch (OperationCanceledException ex)
+            {
+                Debug.WriteLine($"[PredictionProcessor] Batch processing cancelled: {ex.Message}");
+            }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[PredictionProcessor] Batch processing error: {ex.Message}");
+                Debug.WriteLine($"[PredictionProcessor] UNEXPECTED batch processing error: {ex.GetType().Name} - {ex.Message}");
             }
 
             return results;
