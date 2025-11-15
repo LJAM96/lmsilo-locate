@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '9.0.x'
+
+    - name: Restore and build
+      run: |
+        dotnet restore GeoLens.sln
+        dotnet build GeoLens.sln --configuration Release
+
+    - name: Publish release build
+      run: dotnet publish GeoLens.csproj --configuration Release --output ./release
+
+    - name: Create release archive
+      shell: pwsh
+      run: Compress-Archive -Path ./release/* -DestinationPath GeoLens-${{ github.ref_name }}.zip
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          GeoLens-${{ github.ref_name }}.zip
+          IMPLEMENTATION_SUMMARY.md
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

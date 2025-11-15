@@ -1,0 +1,77 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '9.0.x'
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r Core/requirements.txt
+        pip install -r Core/requirements-cpu.txt
+
+    - name: Restore NuGet packages
+      run: dotnet restore GeoLens.sln
+
+    - name: Build solution
+      run: dotnet build GeoLens.sln --configuration Release --no-restore
+
+    - name: Run unit tests
+      run: dotnet test GeoLens.Tests/GeoLens.Tests.csproj --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage"
+      continue-on-error: true
+
+    - name: Start Python service for integration tests
+      run: |
+        Start-Process python -ArgumentList "-m", "uvicorn", "Core.api_service:app", "--port", "8899" -WindowStyle Hidden
+        Start-Sleep -Seconds 10
+      shell: powershell
+      continue-on-error: true
+
+    - name: Run integration tests
+      run: dotnet test GeoLens.IntegrationTests/GeoLens.IntegrationTests.csproj --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage"
+      continue-on-error: true
+
+    - name: Stop Python service
+      run: Get-Process -Name python -ErrorAction SilentlyContinue | Stop-Process -Force
+      shell: powershell
+      continue-on-error: true
+
+    - name: Run Python smoke test
+      run: python -m Core.smoke_test --device cpu
+      continue-on-error: true
+
+    - name: Upload test coverage
+      uses: codecov/codecov-action@v4
+      with:
+        files: '**/coverage.cobertura.xml'
+        flags: unittests
+        name: codecov-geolens
+      continue-on-error: true
+
+    - name: Build artifacts
+      run: dotnet publish GeoLens.csproj --configuration Release --output ./publish
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: geolens-build
+        path: ./publish

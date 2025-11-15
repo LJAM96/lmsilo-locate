@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace GeoLens.Views
@@ -23,6 +24,8 @@ namespace GeoLens.Views
             "GeoLens automatically selects CPU, CUDA, or ROCm based on your hardware."
         };
 
+        private CancellationTokenSource? _tipRotationCts;
+
         public event EventHandler? RetryRequested;
         public event EventHandler? ExitRequested;
 
@@ -30,6 +33,7 @@ namespace GeoLens.Views
         {
             InitializeComponent();
             ShowRandomTip();
+            this.Unloaded += LoadingPage_Unloaded;
         }
 
         /// <summary>
@@ -125,10 +129,18 @@ namespace GeoLens.Views
         /// </summary>
         public async Task RotateTipsAsync()
         {
-            while (TipsPanel.Visibility == Visibility.Visible)
+            _tipRotationCts = new CancellationTokenSource();
+            try
             {
-                await Task.Delay(5000);
-                DispatcherQueue.TryEnqueue(ShowRandomTip);
+                while (TipsPanel.Visibility == Visibility.Visible && !_tipRotationCts.Token.IsCancellationRequested)
+                {
+                    await Task.Delay(5000, _tipRotationCts.Token);
+                    DispatcherQueue.TryEnqueue(ShowRandomTip);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected when page is unloaded
             }
         }
 
@@ -141,6 +153,16 @@ namespace GeoLens.Views
         private void ExitButton_Click(object sender, RoutedEventArgs e)
         {
             ExitRequested?.Invoke(this, EventArgs.Empty);
+        }
+
+        private void LoadingPage_Unloaded(object sender, RoutedEventArgs e)
+        {
+            // Cancel tip rotation task
+            _tipRotationCts?.Cancel();
+            _tipRotationCts?.Dispose();
+
+            // Unsubscribe events
+            this.Unloaded -= LoadingPage_Unloaded;
         }
     }
 

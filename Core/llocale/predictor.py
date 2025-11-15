@@ -7,15 +7,55 @@ helpers defined here so behaviour remains consistent across surfaces.
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
+from functools import lru_cache, wraps
 from pathlib import Path
-from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Tuple, Union
+from typing import Callable, Dict, Iterable, Iterator, List, Optional, Sequence, Tuple, TypeVar, Union
 
 import pandas as pd
 import reverse_geocode
 import torch
 from geoclip import GeoCLIP
+
+logger = logging.getLogger(__name__)
+T = TypeVar('T')
+
+
+def with_timeout(timeout_seconds: float) -> Callable:
+    """Decorator to add timeout protection to a function using threading.
+
+    If the function doesn't complete within timeout_seconds, returns None and logs a warning.
+    This prevents slow/hanging reverse geocoding lookups from blocking the pipeline.
+    """
+    def decorator(func: Callable[..., T]) -> Callable[..., Optional[T]]:
+        @wraps(func)
+        def wrapper(*args, **kwargs) -> Optional[T]:
+            import threading
+            result = [None]
+            exception = [None]
+
+            def target():
+                try:
+                    result[0] = func(*args, **kwargs)
+                except Exception as e:
+                    exception[0] = e
+
+            thread = threading.Thread(target=target, daemon=True)
+            thread.start()
+            thread.join(timeout=timeout_seconds)
+
+            if thread.is_alive():
+                logger.warning(f"{func.__name__} timed out after {timeout_seconds}s with args={args[:2]}")
+                return None
+
+            if exception[0]:
+                raise exception[0]
+
+            return result[0]
+        return wrapper
+    return decorator
 
 
 @dataclass
@@ -90,12 +130,17 @@ def load_records_from_csv(
 ) -> List[InputRecord]:
     """Load prediction requests from a CSV manifest."""
     try:
-        df = pd.read_csv(csv_path, delimiter=delimiter, on_bad_lines="skip")
+        df = pd.read_csv(
+            csv_path,
+            delimiter=delimiter,
+            on_bad_lines='warn',
+            engine='python'
+        )
     except Exception as exc:  # pragma: no cover - diagnostic path
         raise RuntimeError(f"Failed to read CSV '{csv_path}': {exc}") from exc
 
     if df.empty:
-        return []
+        raise ValueError(f"CSV file is empty or failed to parse: {csv_path}")
 
     records: List[InputRecord] = []
     for idx, row in df.iterrows():
@@ -200,12 +245,27 @@ def load_records_from_path(
     )
 
 
-def reverse_lookup(latitude: float, longitude: float) -> Dict[str, str]:
-    """Fetch human-readable location details for the given coordinates."""
+@lru_cache(maxsize=1024)
+@with_timeout(5.0)  # 5 second timeout for reverse geocoding
+def _reverse_lookup_cached(lat_rounded: float, lon_rounded: float) -> Dict[str, str]:
+    """Cached reverse geocoding to avoid duplicate lookups.
+
+    Coordinates are rounded to 4 decimal places (~11m precision) for better cache hits.
+    Includes timeout protection to prevent hanging on slow lookups.
+    """
     try:
-        return reverse_geocode.get((latitude, longitude))
+        return reverse_geocode.get((lat_rounded, lon_rounded))
     except Exception:
         return {}
+
+
+def reverse_lookup(latitude: float, longitude: float) -> Dict[str, str]:
+    """Fetch human-readable location details for the given coordinates."""
+    # Round to 4 decimal places (~11m precision) for better cache hits
+    lat_rounded = round(latitude, 4)
+    lon_rounded = round(longitude, 4)
+    result = _reverse_lookup_cached(lat_rounded, lon_rounded)
+    return result if result is not None else {}
 
 
 def _materialize_predictions(
@@ -370,3 +430,44 @@ def set_hf_cache_environment(cache_root: Optional[Path]) -> None:
     os.environ["HF_HOME"] = str(cache_root)
     os.environ["HUGGINGFACE_HUB_CACHE"] = str(cache_root / "hub")
     os.environ["TRANSFORMERS_CACHE"] = str(cache_root / "transformers")
+
+
+def _setup_cache(cache_path: Optional[Path]) -> Path:
+    """
+    Securely set up a cache directory with proper validation and permissions.
+
+    Args:
+        cache_path: Optional path to use as cache. Defaults to ~/.cache/geoclip
+
+    Returns:
+        Path: Validated and initialized cache directory path
+
+    Raises:
+        ValueError: If cache_path is a symlink or invalid
+        PermissionError: If cache directory cannot be created or written to
+    """
+    if cache_path is None:
+        cache_path = Path.home() / ".cache" / "geoclip"
+
+    # Resolve to absolute path
+    cache_path = cache_path.resolve()
+
+    # Validate it's not a symlink (security: prevent symlink attacks)
+    if cache_path.is_symlink():
+        raise ValueError(f"Cache path cannot be a symlink: {cache_path}")
+
+    # Create with restrictive permissions (owner only: 0o700 = rwx------)
+    try:
+        cache_path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    except Exception as e:
+        raise PermissionError(f"Cannot create cache directory: {cache_path}") from e
+
+    # Verify we can write to it
+    test_file = cache_path / ".write_test"
+    try:
+        test_file.touch()
+        test_file.unlink()
+    except Exception as e:
+        raise PermissionError(f"Cannot write to cache directory: {cache_path}") from e
+
+    return cache_path

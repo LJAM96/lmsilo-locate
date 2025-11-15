@@ -1,4 +1,5 @@
 using GeoLens.Services.DTOs;
+using Serilog;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -20,13 +21,15 @@ namespace GeoLens.Services
         private readonly string _baseUrl;
         private bool _isDisposed;
 
-        public GeoCLIPApiClient(string baseUrl = "http://localhost:8899")
+        public GeoCLIPApiClient(string? baseUrl = null)
         {
-            _baseUrl = baseUrl.TrimEnd('/');
+            _baseUrl = (baseUrl ?? ConfigurationService.Instance.Config.GeoLens.Api.BaseUrl).TrimEnd('/');
+
+            var timeoutSeconds = ConfigurationService.Instance.Config.GeoLens.Api.RequestTimeoutSeconds;
             _httpClient = new HttpClient
             {
                 BaseAddress = new Uri(_baseUrl),
-                Timeout = TimeSpan.FromMinutes(5) // GeoCLIP inference can take time
+                Timeout = TimeSpan.FromSeconds(timeoutSeconds)
             };
         }
 
@@ -37,11 +40,23 @@ namespace GeoLens.Services
         {
             try
             {
-                var response = await _httpClient.GetAsync("/health", cancellationToken);
+                var healthEndpoint = ConfigurationService.Instance.Config.GeoLens.Api.HealthCheckEndpoint;
+                var response = await _httpClient.GetAsync(healthEndpoint, cancellationToken);
                 return response.IsSuccessStatusCode;
             }
-            catch
+            catch (HttpRequestException ex)
             {
+                Log.Debug(ex, "Health check failed - network error");
+                return false;
+            }
+            catch (TaskCanceledException ex)
+            {
+                Log.Debug(ex, "Health check timed out");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Log.Debug(ex, "Health check failed - unexpected error");
                 return false;
             }
         }
@@ -51,11 +66,12 @@ namespace GeoLens.Services
         /// </summary>
         public async Task<PredictionResult?> InferSingleAsync(
             string imagePath,
-            int topK = 5,
+            int? topK = null,
             string device = "auto",
             CancellationToken cancellationToken = default)
         {
-            var results = await InferBatchAsync(new[] { imagePath }, topK, device, cancellationToken);
+            var actualTopK = topK ?? ConfigurationService.Instance.Config.GeoLens.Api.DefaultTopK;
+            var results = await InferBatchAsync(new[] { imagePath }, actualTopK, device, cancellationToken);
             return results?.FirstOrDefault();
         }
 
@@ -64,12 +80,14 @@ namespace GeoLens.Services
         /// </summary>
         public async Task<List<PredictionResult>?> InferBatchAsync(
             IEnumerable<string> imagePaths,
-            int topK = 5,
+            int? topK = null,
             string device = "auto",
             CancellationToken cancellationToken = default)
         {
             try
             {
+                var actualTopK = topK ?? ConfigurationService.Instance.Config.GeoLens.Api.DefaultTopK;
+
                 // Validate image paths
                 var validPaths = imagePaths
                     .Where(path => File.Exists(path))
@@ -77,7 +95,7 @@ namespace GeoLens.Services
 
                 if (validPaths.Count == 0)
                 {
-                    System.Diagnostics.Debug.WriteLine("No valid image paths provided");
+                    Log.Warning("No valid image paths provided");
                     return new List<PredictionResult>();
                 }
 
@@ -89,13 +107,14 @@ namespace GeoLens.Services
                         Path = path,
                         Md5 = ComputeMd5Hash(path)
                     }).ToList(),
-                    TopK = topK,
+                    TopK = actualTopK,
                     Device = device.ToLowerInvariant(),
                     SkipMissing = true
                 };
 
                 // Send request
-                var response = await _httpClient.PostAsJsonAsync("/infer", request, cancellationToken);
+                var inferEndpoint = ConfigurationService.Instance.Config.GeoLens.Api.InferEndpoint;
+                var response = await _httpClient.PostAsJsonAsync(inferEndpoint, request, cancellationToken);
                 response.EnsureSuccessStatusCode();
 
                 // Parse response
@@ -103,26 +122,26 @@ namespace GeoLens.Services
 
                 if (inferenceResponse == null)
                 {
-                    System.Diagnostics.Debug.WriteLine("Failed to parse inference response");
+                    Log.Error("Failed to parse inference response");
                     return null;
                 }
 
-                System.Diagnostics.Debug.WriteLine($"Inference completed on device: {inferenceResponse.Device}");
+                Log.Information("Inference completed on device: {Device}", inferenceResponse.Device);
                 return inferenceResponse.Results;
             }
             catch (HttpRequestException ex)
             {
-                System.Diagnostics.Debug.WriteLine($"HTTP error during inference: {ex.Message}");
+                Log.Error(ex, "HTTP error during inference");
                 return null;
             }
             catch (TaskCanceledException ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Inference request timed out: {ex.Message}");
+                Log.Warning(ex, "Inference request timed out");
                 return null;
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Unexpected error during inference: {ex.Message}");
+                Log.Error(ex, "Unexpected error during inference");
                 return null;
             }
         }
@@ -169,9 +188,19 @@ namespace GeoLens.Services
                 var hash = md5.ComputeHash(stream);
                 return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
             }
+            catch (IOException ex)
+            {
+                Log.Warning(ex, "I/O error computing MD5 for {FilePath}", filePath);
+                return null;
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                Log.Warning(ex, "Access denied computing MD5 for {FilePath}", filePath);
+                return null;
+            }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error computing MD5 for {filePath}: {ex.Message}");
+                Log.Error(ex, "Unexpected error computing MD5 for {FilePath}", filePath);
                 return null;
             }
         }

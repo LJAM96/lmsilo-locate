@@ -1,3 +1,4 @@
+using Serilog;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -22,11 +23,13 @@ namespace GeoLens.Services
         public string BaseUrl => $"http://localhost:{_port}";
         public bool IsRunning => _pythonProcess != null && !_pythonProcess.HasExited;
 
-        public PythonRuntimeManager(string pythonExecutable = "python", int port = 8899)
+        public PythonRuntimeManager(string pythonExecutable = "python", int? port = null)
         {
             _pythonExecutable = pythonExecutable;
-            _port = port;
-            _healthCheckClient = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+            _port = port ?? ConfigurationService.Instance.Config.GeoLens.Api.Port;
+
+            var healthCheckTimeout = ConfigurationService.Instance.Config.GeoLens.Api.HealthCheckTimeoutSeconds;
+            _healthCheckClient = new HttpClient { Timeout = TimeSpan.FromSeconds(healthCheckTimeout) };
 
             // Determine api_service.py path
             // In development: search upward from bin directory to find project root
@@ -64,7 +67,7 @@ namespace GeoLens.Services
         {
             if (IsRunning)
             {
-                Debug.WriteLine("Python service is already running");
+                Log.Information("Python service is already running");
                 progress?.Report(100);
                 return true;
             }
@@ -72,10 +75,10 @@ namespace GeoLens.Services
             progress?.Report(0);
 
             // Check if service is already running on the port (external process)
-            Debug.WriteLine($"Checking if service is already running on {BaseUrl}...");
+            Log.Information("Checking if service is already running on {BaseUrl}", BaseUrl);
             if (await IsServiceAlreadyRunningAsync())
             {
-                Debug.WriteLine("Service is already running externally - skipping startup");
+                Log.Information("Service is already running externally - skipping startup");
                 progress?.Report(100);
                 return true;
             }
@@ -83,7 +86,7 @@ namespace GeoLens.Services
             // Verify Python executable exists
             if (!CanFindPython())
             {
-                Debug.WriteLine($"Python executable not found: {_pythonExecutable}");
+                Log.Error("Python executable not found: {PythonExecutable}", _pythonExecutable);
                 return false;
             }
 
@@ -92,7 +95,7 @@ namespace GeoLens.Services
             // Verify api_service.py exists
             if (!File.Exists(_apiServiceScript))
             {
-                Debug.WriteLine($"API service script not found: {_apiServiceScript}");
+                Log.Error("API service script not found: {ApiServiceScript}", _apiServiceScript);
                 return false;
             }
 
@@ -128,7 +131,7 @@ namespace GeoLens.Services
                 {
                     if (!string.IsNullOrEmpty(e.Data))
                     {
-                        Debug.WriteLine($"[Python] {e.Data}");
+                        Log.Debug("[Python] {Output}", e.Data);
                     }
                 };
 
@@ -136,7 +139,7 @@ namespace GeoLens.Services
                 {
                     if (!string.IsNullOrEmpty(e.Data))
                     {
-                        Debug.WriteLine($"[Python Error] {e.Data}");
+                        Log.Warning("[Python Error] {Output}", e.Data);
                     }
                 };
 
@@ -146,17 +149,17 @@ namespace GeoLens.Services
                 _pythonProcess.BeginOutputReadLine();
                 _pythonProcess.BeginErrorReadLine();
 
-                Debug.WriteLine($"Python service starting on {BaseUrl}...");
+                Log.Information("Python service starting on {BaseUrl}", BaseUrl);
 
                 progress?.Report(40);
 
-                // Wait for service to be ready (health check with reduced timeout)
-                // Reduced from 30s to 15s - typical startup is 3-5 seconds
-                return await WaitForHealthyAsync(TimeSpan.FromSeconds(15), cancellationToken, progress);
+                // Wait for service to be ready (health check)
+                var startupTimeout = ConfigurationService.Instance.Config.GeoLens.Api.StartupTimeoutSeconds;
+                return await WaitForHealthyAsync(TimeSpan.FromSeconds(startupTimeout), cancellationToken, progress);
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Failed to start Python service: {ex.Message}");
+                Log.Error(ex, "Failed to start Python service");
                 return false;
             }
         }
@@ -178,7 +181,7 @@ namespace GeoLens.Services
             {
                 if (await CheckHealthAsync(cancellationToken))
                 {
-                    Debug.WriteLine("Python service is healthy");
+                    Log.Information("Python service is healthy");
                     progress?.Report(100);
                     return true;
                 }
@@ -191,7 +194,7 @@ namespace GeoLens.Services
                 await Task.Delay(retryDelay, cancellationToken);
             }
 
-            Debug.WriteLine("Python service health check timed out");
+            Log.Error("Python service health check timed out");
             return false;
         }
 
@@ -200,12 +203,10 @@ namespace GeoLens.Services
         /// </summary>
         public async Task<bool> CheckHealthAsync(CancellationToken cancellationToken = default)
         {
-            if (!IsRunning)
-                return false;
-
             try
             {
-                var response = await _healthCheckClient.GetAsync($"{BaseUrl}/health", cancellationToken);
+                var healthEndpoint = ConfigurationService.Instance.Config.GeoLens.Api.HealthCheckEndpoint;
+                var response = await _healthCheckClient.GetAsync($"{BaseUrl}{healthEndpoint}", cancellationToken);
                 return response.IsSuccessStatusCode;
             }
             catch
@@ -224,14 +225,14 @@ namespace GeoLens.Services
 
             try
             {
-                Debug.WriteLine("Stopping Python service...");
+                Log.Information("Stopping Python service...");
                 _pythonProcess.Kill(entireProcessTree: true);
                 _pythonProcess.WaitForExit(5000);
-                Debug.WriteLine("Python service stopped");
+                Log.Information("Python service stopped");
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Error stopping Python service: {ex.Message}");
+                Log.Error(ex, "Error stopping Python service");
             }
             finally
             {
@@ -247,17 +248,18 @@ namespace GeoLens.Services
         {
             try
             {
-                var response = await _healthCheckClient.GetAsync($"{BaseUrl}/health");
+                var healthEndpoint = ConfigurationService.Instance.Config.GeoLens.Api.HealthCheckEndpoint;
+                var response = await _healthCheckClient.GetAsync($"{BaseUrl}{healthEndpoint}");
                 if (response.IsSuccessStatusCode)
                 {
                     var content = await response.Content.ReadAsStringAsync();
-                    Debug.WriteLine($"External service health check response: {content}");
+                    Log.Debug("External service health check response: {Response}", content);
                     return true;
                 }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Health check failed (service not running): {ex.Message}");
+                Log.Debug(ex, "Health check failed (service not running)");
             }
             return false;
         }
@@ -266,17 +268,21 @@ namespace GeoLens.Services
         {
             try
             {
-                var process = Process.Start(new ProcessStartInfo
+                using var process = new Process
                 {
-                    FileName = _pythonExecutable,
-                    Arguments = "--version",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true
-                });
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = _pythonExecutable,
+                        Arguments = "--version",
+                        UseShellExecute = false,
+                        CreateNoWindow = true,
+                        RedirectStandardOutput = true
+                    }
+                };
 
-                process?.WaitForExit(2000);
-                return process?.ExitCode == 0;
+                process.Start();
+                process.WaitForExit(2000);
+                return process.ExitCode == 0;
             }
             catch
             {

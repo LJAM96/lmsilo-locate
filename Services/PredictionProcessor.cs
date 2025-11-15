@@ -1,9 +1,12 @@
 using GeoLens.Models;
 using GeoLens.Services.DTOs;
+using Serilog;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -44,9 +47,17 @@ namespace GeoLens.Services
             bool forceApiCall = false,
             CancellationToken cancellationToken = default)
         {
+            // Start timing for audit log
+            var stopwatch = Stopwatch.StartNew();
+            string? imageHash = null;
+            var fileName = System.IO.Path.GetFileName(imagePath);
+
             try
             {
-                Debug.WriteLine($"[PredictionProcessor] Starting pipeline for: {System.IO.Path.GetFileName(imagePath)}");
+                Log.Information("Starting pipeline for: {FileName}", fileName);
+
+                // Compute image hash early for audit logging
+                imageHash = await _cacheService.ComputeImageHashAsync(imagePath);
 
                 // Step 1: Check cache first (unless force refresh)
                 if (!forceApiCall)
@@ -54,53 +65,58 @@ namespace GeoLens.Services
                     var cached = await _cacheService.GetCachedPredictionAsync(imagePath);
                     if (cached != null)
                     {
-                        Debug.WriteLine($"[PredictionProcessor] Cache HIT for: {System.IO.Path.GetFileName(imagePath)}");
+                        Log.Information("Cache HIT for: {FileName}", fileName);
+
+                        // Log audit for cached result
+                        stopwatch.Stop();
+                        await LogAuditAsync(imagePath, fileName, imageHash, cached.Predictions, cached.ExifGps?.HasGps ?? false, stopwatch.ElapsedMilliseconds, true, null);
+
                         return await BuildResultFromCacheAsync(cached);
                     }
                 }
 
-                Debug.WriteLine($"[PredictionProcessor] Cache MISS - proceeding with full pipeline");
+                Log.Information("Cache MISS - proceeding with full pipeline");
 
                 // Step 2: Extract EXIF GPS data
                 var exifGps = await _exifExtractor.ExtractGpsDataAsync(imagePath);
                 if (exifGps?.HasGps == true)
                 {
-                    Debug.WriteLine($"[PredictionProcessor] Found GPS in EXIF: {exifGps.Latitude:F6}, {exifGps.Longitude:F6}");
+                    Log.Information("Found GPS in EXIF: {Latitude:F6}, {Longitude:F6}", exifGps.Latitude, exifGps.Longitude);
                 }
                 else
                 {
-                    Debug.WriteLine($"[PredictionProcessor] No GPS data in EXIF");
+                    Log.Debug("No GPS data in EXIF");
                 }
 
                 // Step 3: Call API for AI predictions
-                Debug.WriteLine($"[PredictionProcessor] Calling GeoCLIP API (device={device}, topK={topK})");
+                Log.Information("Calling GeoCLIP API (device={Device}, topK={TopK})", device, topK);
                 var apiResult = await _apiClient.InferSingleAsync(imagePath, topK, device, cancellationToken);
 
                 if (apiResult == null)
                 {
-                    Debug.WriteLine($"[PredictionProcessor] API call failed - no result returned");
+                    Log.Warning("API call failed - no result returned");
                     return CreateEmptyResult(imagePath, exifGps);
                 }
 
                 if (!string.IsNullOrEmpty(apiResult.Error))
                 {
-                    Debug.WriteLine($"[PredictionProcessor] API returned error: {apiResult.Error}");
+                    Log.Warning("API returned error: {Error}", apiResult.Error);
                     return CreateEmptyResult(imagePath, exifGps, apiResult.Error);
                 }
 
                 // Step 4: Convert API predictions to enhanced predictions
                 var enhancedPredictions = ConvertToEnhancedPredictions(apiResult.Predictions);
-                Debug.WriteLine($"[PredictionProcessor] Converted {enhancedPredictions.Count} predictions");
+                Log.Debug("Converted {PredictionCount} predictions", enhancedPredictions.Count);
 
                 // Step 5: Store in cache for future lookups
                 try
                 {
                     await _cacheService.StorePredictionAsync(imagePath, apiResult.Predictions, exifGps);
-                    Debug.WriteLine($"[PredictionProcessor] Stored result in cache");
+                    Log.Debug("Stored result in cache");
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"[PredictionProcessor] Failed to store in cache (non-fatal): {ex.Message}");
+                    Log.Warning(ex, "Failed to store in cache (non-fatal)");
                     // Cache storage failure should not prevent returning the result
                 }
 
@@ -115,13 +131,72 @@ namespace GeoLens.Services
                     ProcessedAt = DateTime.UtcNow
                 };
 
-                Debug.WriteLine($"[PredictionProcessor] Pipeline complete for: {System.IO.Path.GetFileName(imagePath)}");
+                // Log successful processing to audit
+                stopwatch.Stop();
+                await LogAuditAsync(imagePath, fileName, imageHash ?? "unknown", apiResult.Predictions, exifGps?.HasGps ?? false, stopwatch.ElapsedMilliseconds, true, null);
+
+                Log.Information("Pipeline complete for: {FileName}", fileName);
                 return result;
+            }
+            catch (HttpRequestException ex)
+            {
+                Log.Error(ex, "Network error in pipeline");
+
+                // Log failed processing to audit
+                stopwatch.Stop();
+                await LogAuditAsync(imagePath, fileName, imageHash ?? "unknown", new List<PredictionCandidate>(), false, stopwatch.ElapsedMilliseconds, false, $"Network error: {ex.Message}");
+
+                return CreateEmptyResult(imagePath, null, $"Network error: Unable to connect to GeoCLIP service");
+            }
+            catch (TaskCanceledException ex)
+            {
+                Log.Warning(ex, "Pipeline cancelled or timed out");
+
+                // Log cancelled processing to audit
+                stopwatch.Stop();
+                await LogAuditAsync(imagePath, fileName, imageHash ?? "unknown", new List<PredictionCandidate>(), false, stopwatch.ElapsedMilliseconds, false, "Operation cancelled or timed out");
+
+                return CreateEmptyResult(imagePath, null, "Operation cancelled or timed out");
+            }
+            catch (OperationCanceledException ex)
+            {
+                Log.Warning(ex, "Pipeline operation cancelled");
+
+                // Log cancelled processing to audit
+                stopwatch.Stop();
+                await LogAuditAsync(imagePath, fileName, imageHash ?? "unknown", new List<PredictionCandidate>(), false, stopwatch.ElapsedMilliseconds, false, "Operation cancelled");
+
+                return CreateEmptyResult(imagePath, null, "Operation cancelled");
+            }
+            catch (IOException ex)
+            {
+                Log.Error(ex, "File I/O error in pipeline");
+
+                // Log failed processing to audit
+                stopwatch.Stop();
+                await LogAuditAsync(imagePath, fileName, imageHash ?? "unknown", new List<PredictionCandidate>(), false, stopwatch.ElapsedMilliseconds, false, $"I/O error: {ex.Message}");
+
+                return CreateEmptyResult(imagePath, null, $"File I/O error: {ex.Message}");
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                Log.Error(ex, "Access denied in pipeline");
+
+                // Log failed processing to audit
+                stopwatch.Stop();
+                await LogAuditAsync(imagePath, fileName, imageHash ?? "unknown", new List<PredictionCandidate>(), false, stopwatch.ElapsedMilliseconds, false, $"Access denied: {ex.Message}");
+
+                return CreateEmptyResult(imagePath, null, $"Access denied: {ex.Message}");
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[PredictionProcessor] Pipeline error: {ex.Message}");
-                return CreateEmptyResult(imagePath, null, $"Pipeline error: {ex.Message}");
+                Log.Error(ex, "Unexpected pipeline error: {ExceptionType}", ex.GetType().Name);
+
+                // Log failed processing to audit
+                stopwatch.Stop();
+                await LogAuditAsync(imagePath, fileName, imageHash ?? "unknown", new List<PredictionCandidate>(), false, stopwatch.ElapsedMilliseconds, false, $"Unexpected error: {ex.Message}");
+
+                return CreateEmptyResult(imagePath, null, $"Unexpected error: {ex.Message}");
             }
         }
 
@@ -147,7 +222,7 @@ namespace GeoLens.Services
             var totalImages = imagePaths.Count;
             var cachedCount = 0;
 
-            Debug.WriteLine($"[PredictionProcessor] Starting batch processing: {totalImages} images");
+            Log.Information("Starting batch processing: {TotalImages} images", totalImages);
 
             try
             {
@@ -156,7 +231,7 @@ namespace GeoLens.Services
                 {
                     if (cancellationToken.IsCancellationRequested)
                     {
-                        Debug.WriteLine($"[PredictionProcessor] Batch processing cancelled at {i}/{totalImages}");
+                        Log.Information("Batch processing cancelled at {ProcessedCount}/{TotalImages}", i, totalImages);
                         break;
                     }
 
@@ -181,7 +256,7 @@ namespace GeoLens.Services
                         cachedCount++;
                     }
 
-                    Debug.WriteLine($"[PredictionProcessor] Batch progress: {i + 1}/{totalImages} ({cachedCount} cached)");
+                    Log.Debug("Batch progress: {ProcessedCount}/{TotalImages} ({CachedCount} cached)", i + 1, totalImages, cachedCount);
                 }
 
                 // Report final progress
@@ -193,11 +268,15 @@ namespace GeoLens.Services
                     CurrentImage = null
                 });
 
-                Debug.WriteLine($"[PredictionProcessor] Batch complete: {results.Count} results ({cachedCount} from cache)");
+                Log.Information("Batch complete: {ResultCount} results ({CachedCount} from cache)", results.Count, cachedCount);
+            }
+            catch (OperationCanceledException ex)
+            {
+                Log.Warning(ex, "Batch processing cancelled");
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[PredictionProcessor] Batch processing error: {ex.Message}");
+                Log.Error(ex, "Unexpected batch processing error: {ExceptionType}", ex.GetType().Name);
             }
 
             return results;
@@ -294,7 +373,7 @@ namespace GeoLens.Services
         {
             if (!string.IsNullOrEmpty(error))
             {
-                Debug.WriteLine($"[PredictionProcessor] Creating empty result with error: {error}");
+                Log.Warning("Creating empty result with error: {Error}", error);
             }
 
             return new EnhancedPredictionResult
@@ -306,6 +385,76 @@ namespace GeoLens.Services
                 FromCache = false,
                 ProcessedAt = DateTime.UtcNow
             };
+        }
+
+        /// <summary>
+        /// Logs a processing operation to the audit log.
+        /// </summary>
+        private async Task LogAuditAsync(
+            string imagePath,
+            string fileName,
+            string imageHash,
+            List<PredictionCandidate> predictions,
+            bool exifGpsPresent,
+            long elapsedMs,
+            bool success,
+            string? errorMessage)
+        {
+            try
+            {
+                // Convert PredictionCandidates to PredictionResults for audit log
+                var predictionResults = predictions.Select(p => new PredictionResult
+                {
+                    Latitude = p.Latitude,
+                    Longitude = p.Longitude,
+                    Probability = p.Probability,
+                    LocationName = BuildLocationSummaryFromCandidate(p),
+                    City = p.City ?? string.Empty,
+                    State = p.State ?? string.Empty,
+                    County = p.County ?? string.Empty,
+                    Country = p.Country ?? string.Empty
+                }).ToList();
+
+                var auditEntry = new AuditLogEntry
+                {
+                    Timestamp = DateTime.UtcNow,
+                    Filename = fileName,
+                    Filepath = imagePath,
+                    ImageHash = imageHash,
+                    WindowsUser = Environment.UserName,
+                    ProcessingTimeMs = (int)elapsedMs,
+                    Predictions = predictionResults,
+                    ExifGpsPresent = exifGpsPresent,
+                    Success = success,
+                    ErrorMessage = errorMessage
+                };
+
+                await App.AuditService.LogProcessingOperationAsync(auditEntry);
+            }
+            catch (Exception ex)
+            {
+                // Audit logging should never break the main flow
+                Log.Warning(ex, "Failed to write audit log");
+            }
+        }
+
+        /// <summary>
+        /// Build a location summary string from prediction candidate (for audit log).
+        /// </summary>
+        private string BuildLocationSummaryFromCandidate(PredictionCandidate candidate)
+        {
+            var parts = new List<string>();
+
+            if (!string.IsNullOrEmpty(candidate.City))
+                parts.Add(candidate.City);
+
+            if (!string.IsNullOrEmpty(candidate.State))
+                parts.Add(candidate.State);
+
+            if (!string.IsNullOrEmpty(candidate.Country))
+                parts.Add(candidate.Country);
+
+            return parts.Count > 0 ? string.Join(", ", parts) : "Unknown Location";
         }
     }
 

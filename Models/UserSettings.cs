@@ -24,6 +24,11 @@ namespace GeoLens.Models
         public bool ShowThumbnails { get; set; } = true;
         public ThumbnailSize ThumbnailSize { get; set; } = ThumbnailSize.Medium;
         public AppTheme Theme { get; set; } = AppTheme.Dark;
+        public bool ShowSkeletonLoaders { get; set; } = true;
+
+        // Export Settings
+        public bool AlwaysShowExportPreview { get; set; } = true;
+        public string DefaultExportTemplateId { get; set; } = "builtin-detailed"; // Default to Detailed template
 
         // Hardware (read-only, populated at runtime)
         public string? DetectedGpu { get; set; }

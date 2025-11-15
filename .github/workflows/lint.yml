@@ -1,0 +1,48 @@
+name: Code Quality
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  lint:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '9.0.x'
+
+    - name: Restore dependencies
+      run: dotnet restore GeoLens.sln
+
+    - name: Format check
+      run: dotnet format GeoLens.sln --verify-no-changes --verbosity diagnostic
+      continue-on-error: true
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install Python linters
+      run: |
+        pip install flake8 mypy black
+
+    - name: Lint Python code
+      run: |
+        flake8 Core/ --max-line-length=120 --ignore=E203,W503 --count --show-source --statistics
+      continue-on-error: true
+
+    - name: Check Python code formatting
+      run: |
+        black --check Core/
+      continue-on-error: true
+
+    - name: Type check Python code
+      run: |
+        mypy Core/ --ignore-missing-imports --show-error-codes
+      continue-on-error: true

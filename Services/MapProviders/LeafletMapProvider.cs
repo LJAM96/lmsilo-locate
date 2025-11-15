@@ -20,6 +20,7 @@ namespace GeoLens.Services.MapProviders
         private bool _isInitialized = false;
         private readonly string _htmlPath;
         private readonly bool _offlineMode;
+        private readonly MapTileCacheService? _tileCacheService;
 
         public bool IsReady => _isInitialized;
 
@@ -28,10 +29,12 @@ namespace GeoLens.Services.MapProviders
         /// </summary>
         /// <param name="webView">The WebView2 control to use</param>
         /// <param name="offlineMode">Whether to use offline mode (local tiles only)</param>
-        public LeafletMapProvider(WebView2 webView, bool offlineMode = false)
+        /// <param name="tileCacheService">Optional map tile cache service for offline viewing</param>
+        public LeafletMapProvider(WebView2 webView, bool offlineMode = false, MapTileCacheService? tileCacheService = null)
         {
             _webView = webView ?? throw new ArgumentNullException(nameof(webView));
             _offlineMode = offlineMode;
+            _tileCacheService = tileCacheService;
 
             // Determine HTML file path
             string appDir = AppContext.BaseDirectory;
@@ -39,6 +42,7 @@ namespace GeoLens.Services.MapProviders
 
             Debug.WriteLine($"[LeafletMap] HTML path: {_htmlPath}");
             Debug.WriteLine($"[LeafletMap] Offline mode: {_offlineMode}");
+            Debug.WriteLine($"[LeafletMap] Tile cache: {(_tileCacheService != null ? "Enabled" : "Disabled")}");
         }
 
         /// <summary>
@@ -78,7 +82,14 @@ namespace GeoLens.Services.MapProviders
                 void NavigationCompleted(WebView2 sender, CoreWebView2NavigationCompletedEventArgs args)
                 {
                     _webView.NavigationCompleted -= NavigationCompleted;
-                    tcs.SetResult(args.IsSuccess);
+                    // Check if already completed to prevent race condition
+                    if (!tcs.Task.IsCompleted)
+                    {
+                        if (args.IsSuccess)
+                            tcs.SetResult(true);
+                        else
+                            tcs.SetException(new Exception("WebView2 navigation failed"));
+                    }
                 }
                 _webView.NavigationCompleted += NavigationCompleted;
 
@@ -94,6 +105,14 @@ namespace GeoLens.Services.MapProviders
                 if (_offlineMode)
                 {
                     await ExecuteScriptAsync("mapAPI.setMapMode('offline')");
+                }
+
+                // Register tile cache service if available
+                if (_tileCacheService != null)
+                {
+                    await _tileCacheService.InitializeAsync();
+                    _tileCacheService.RegisterWebViewInterception(_webView.CoreWebView2);
+                    Debug.WriteLine("[LeafletMap] Tile cache service registered");
                 }
 
                 // Wait a bit for Leaflet to fully initialize

@@ -89,6 +89,7 @@ namespace GeoLens.Services
         {
             // Cancel any pending save
             _debounceCts?.Cancel();
+            _debounceCts?.Dispose();
             _debounceCts = new CancellationTokenSource();
 
             try

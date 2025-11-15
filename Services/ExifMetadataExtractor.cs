@@ -247,8 +247,13 @@ namespace GeoLens.Services
                 var altRef = altRefData.ContainsKey(gpsAltRefPath) ?
                     (byte)(altRefData[gpsAltRefPath].Value ?? 0) : (byte)0;
 
-                // Altitude is stored as a rational
-                var altValue = (BitmapTypedValue)altitudeData[gpsAltPath].Value;
+                // Altitude is stored as a rational - use safe pattern matching
+                if (altitudeData[gpsAltPath].Value is not BitmapTypedValue altValue)
+                {
+                    Debug.WriteLine($"[ExifMetadataExtractor] Altitude value is not BitmapTypedValue");
+                    return null;
+                }
+
                 double altitude = ConvertRational(altValue);
 
                 // AltitudeRef: 0 = above sea level, 1 = below sea level
@@ -259,8 +264,9 @@ namespace GeoLens.Services
 
                 return altitude;
             }
-            catch
+            catch (Exception ex)
             {
+                Debug.WriteLine($"[ExifMetadataExtractor] Failed to extract altitude: {ex.Message}");
                 return null;
             }
         }
@@ -349,26 +355,28 @@ namespace GeoLens.Services
         {
             try
             {
-                if (value.Type == PropertyType.UInt32Array)
+                if (value.Type == PropertyType.UInt32Array && value.Value is uint[] uintArray)
                 {
-                    var array = (uint[])value.Value;
-                    if (array.Length >= 2 && array[1] != 0)
+                    if (uintArray.Length >= 2 && uintArray[1] != 0)
                     {
-                        return (double)array[0] / array[1];
+                        return (double)uintArray[0] / uintArray[1];
                     }
                 }
-                else if (value.Type == PropertyType.Int32Array)
+                else if (value.Type == PropertyType.Int32Array && value.Value is int[] intArray)
                 {
-                    var array = (int[])value.Value;
-                    if (array.Length >= 2 && array[1] != 0)
+                    if (intArray.Length >= 2 && intArray[1] != 0)
                     {
-                        return (double)array[0] / array[1];
+                        return (double)intArray[0] / intArray[1];
                     }
+                }
+                else
+                {
+                    Debug.WriteLine($"[ExifMetadataExtractor] Unexpected rational value type: {value.Type}");
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Ignore conversion errors
+                Debug.WriteLine($"[ExifMetadataExtractor] Error converting rational value: {ex.Message}");
             }
 
             return 0;
@@ -387,9 +395,9 @@ namespace GeoLens.Services
                     return data[propertyPath].Value.ToString();
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Property not found or error reading
+                Debug.WriteLine($"[ExifMetadataExtractor] Failed to read property {propertyPath}: {ex.Message}");
             }
             return null;
         }
@@ -414,9 +422,9 @@ namespace GeoLens.Services
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Property not found or error reading
+                Debug.WriteLine($"[ExifMetadataExtractor] Failed to read ushort property {propertyPath}: {ex.Message}");
             }
             return null;
         }
@@ -434,9 +442,9 @@ namespace GeoLens.Services
                     return ConvertRational(value);
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Property not found or error reading
+                Debug.WriteLine($"[ExifMetadataExtractor] Failed to read rational property {propertyPath}: {ex.Message}");
             }
             return null;
         }
