@@ -1,10 +1,12 @@
 using GeoLens.Models;
 using GeoLens.Services;
 using GeoLens.Services.MapProviders;
+using GeoLens.Commands;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Serilog;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -16,23 +18,34 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading.Tasks;
 using SixLabors.ImageSharp;
+using Windows.UI;
 using SixLabors.ImageSharp.Processing;
 using Windows.Graphics.Imaging;
+using Microsoft.Extensions.DependencyInjection;
 using MUXC = Microsoft.UI.Xaml.Controls;
 
 namespace GeoLens.Views
 {
     public sealed partial class MainPage : Page, INotifyPropertyChanged
     {
+        // Injected services
+        private readonly PredictionCacheService _cacheService;
+        private readonly RecentFilesService _recentFilesService;
+        private readonly GeoCLIPApiClient _apiClient;
+        private readonly ExportService _exportService;
+
         private bool _hasExifGps;
         private string _reliabilityMessage = "No image selected";
         private IMapProvider? _mapProvider;
-        private readonly ExportService _exportService = new();
         private bool _isLoadingPredictions = false;
+        private CommandManager? _commandManager;
 
         // Current image data
         private string _currentImagePath = "";
         private ExifGpsData? _currentExifData;
+
+        // Drag-drop state
+        private int _dragStartIndex = -1;
 
         // Observable Collections
         public ObservableCollection<ImageQueueItem> ImageQueue { get; } = new();
@@ -77,15 +90,54 @@ namespace GeoLens.Views
         {
             this.InitializeComponent();
 
+            // Get services from DI container
+            _cacheService = App.Services.GetRequiredService<PredictionCacheService>();
+            _recentFilesService = App.Services.GetRequiredService<RecentFilesService>();
+            _apiClient = App.Services.GetRequiredService<GeoCLIPApiClient>();
+            _exportService = App.Services.GetRequiredService<ExportService>();
+
             // Initialize map when page loads
             this.Loaded += MainPage_Loaded;
             this.Unloaded += MainPage_Unloaded;
+
+            // Subscribe to flyout opening to update recent files
+            AddImagesFlyout.Opening += AddImagesFlyout_Opening;
+
+            // Get CommandManager from DI container
+            try
+            {
+                _commandManager = App.Services.GetService<CommandManager>();
+                if (_commandManager != null)
+                {
+                    _commandManager.StateChanged += CommandManager_StateChanged;
+                    Log.Information("CommandManager initialized");
+                }
+                else
+                {
+                    Log.Warning("CommandManager not available in DI container");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Error getting CommandManager");
+            }
         }
 
         private async void MainPage_Loaded(object sender, RoutedEventArgs e)
         {
             // Cache service already initialized in App.xaml.cs
             await InitializeMapAsync();
+
+            // Initialize network monitoring
+            await CheckNetworkStatusAsync();
+
+            // Subscribe to network status changes
+            Windows.Networking.Connectivity.NetworkInformation.NetworkStatusChanged += async (sender) =>
+            {
+                await DispatcherQueue.TryEnqueueAsync(async () => await CheckNetworkStatusAsync());
+            };
+
+            Log.Information("Network monitoring initialized");
         }
 
         private void MainPage_Unloaded(object sender, RoutedEventArgs e)
@@ -96,11 +148,11 @@ namespace GeoLens.Views
                 try
                 {
                     _mapProvider.Dispose();
-                    Debug.WriteLine("[MainPage] Map provider disposed");
+                    Log.Information("Map provider disposed");
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"[MainPage] Error disposing map provider: {ex.Message}");
+                    Log.Error(ex, "Error disposing map provider");
                 }
             }
 
@@ -113,14 +165,14 @@ namespace GeoLens.Views
             this.Loaded -= MainPage_Loaded;
             this.Unloaded -= MainPage_Unloaded;
 
-            Debug.WriteLine("[MainPage] Page cleanup complete");
+            Log.Information("Page cleanup complete");
         }
 
         private async Task InitializeMapAsync()
         {
             try
             {
-                System.Diagnostics.Debug.WriteLine("[MainPage] Initializing map...");
+                Log.Information("Initializing map...");
 
                 // Create Leaflet map provider (hybrid mode: offline fallback with online tiles)
                 _mapProvider = new LeafletMapProvider(GlobeWebView, offlineMode: false);
@@ -131,15 +183,53 @@ namespace GeoLens.Views
                 // Hide loading overlay
                 GlobeLoadingOverlay.Visibility = Visibility.Collapsed;
 
-                System.Diagnostics.Debug.WriteLine("[MainPage] Map ready");
+                Log.Information("Map ready");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[MainPage] Map initialization failed: {ex.Message}");
+                Log.Error(ex, "Map initialization failed");
 
                 // Update loading overlay to show error
                 GlobeLoadingOverlay.Visibility = Visibility.Visible;
                 // TODO: Update overlay UI to show error message instead of loading
+            }
+        }
+
+        /// <summary>
+        /// Check network status and update the status bar indicator
+        /// </summary>
+        private async Task CheckNetworkStatusAsync()
+        {
+            try
+            {
+                var profile = Windows.Networking.Connectivity.NetworkInformation.GetInternetConnectionProfile();
+                bool isConnected = profile?.GetNetworkConnectivityLevel() ==
+                    Windows.Networking.Connectivity.NetworkConnectivityLevel.InternetAccess;
+
+                if (isConnected)
+                {
+                    NetworkStatusIcon.Glyph = "\uE774"; // Globe icon
+                    NetworkStatusIcon.Foreground = new SolidColorBrush(Colors.LimeGreen);
+                    NetworkStatusText.Text = "Online";
+                    ProcessingStatusText.Text = "";
+                    Log.Information("Network status: Online");
+                }
+                else
+                {
+                    NetworkStatusIcon.Glyph = "\uF384"; // Offline icon
+                    NetworkStatusIcon.Foreground = new SolidColorBrush(Colors.Orange);
+                    NetworkStatusText.Text = "Offline";
+                    ProcessingStatusText.Text = "Reverse geocoding unavailable";
+                    Log.Information("Network status: Offline");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Error checking network status");
+                NetworkStatusIcon.Glyph = "\uE783"; // Warning icon
+                NetworkStatusIcon.Foreground = new SolidColorBrush(Colors.Red);
+                NetworkStatusText.Text = "Unknown";
+                ProcessingStatusText.Text = "Network status unknown";
             }
         }
 
@@ -148,7 +238,7 @@ namespace GeoLens.Views
             // Prevent concurrent execution to avoid duplicate predictions
             if (_isLoadingPredictions)
             {
-                Debug.WriteLine("[Selection] Already loading predictions, skipping...");
+                Log.Debug("Already loading predictions, skipping...");
                 return;
             }
 
@@ -162,11 +252,11 @@ namespace GeoLens.Views
                     _isLoadingPredictions = true;
 
                     // Load cached predictions for this image
-                    var cached = await App.CacheService.GetCachedPredictionAsync(selectedItem.FilePath);
+                    var cached = await _cacheService.GetCachedPredictionAsync(selectedItem.FilePath);
                     if (cached != null)
                     {
                         await DisplayCachedPredictionsAsync(cached);
-                        Debug.WriteLine($"[Selection] Loaded predictions for {selectedItem.FileName}");
+                        Log.Information("Loaded predictions for {FileName}", selectedItem.FileName);
                     }
                 }
                 finally
@@ -177,6 +267,116 @@ namespace GeoLens.Views
         }
 
         // Event Handlers
+
+        // Recent Files Menu
+        private void AddImagesFlyout_Opening(object sender, object e)
+        {
+            UpdateRecentFilesMenu();
+        }
+
+        private void UpdateRecentFilesMenu()
+        {
+            RecentFilesMenu.Items.Clear();
+
+            var recentFiles = _recentFilesService.GetRecentFiles();
+            if (!recentFiles.Any())
+            {
+                var noItems = new MenuFlyoutItem { Text = "No recent files", IsEnabled = false };
+                RecentFilesMenu.Items.Add(noItems);
+                return;
+            }
+
+            foreach (var file in recentFiles)
+            {
+                var item = new MenuFlyoutItem
+                {
+                    Text = $"{file.FileName} ({file.LastAccessed:g})",
+                    Tag = file.FilePath
+                };
+                item.Click += RecentFile_Click;
+                RecentFilesMenu.Items.Add(item);
+            }
+        }
+
+        private async void RecentFile_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuFlyoutItem item && item.Tag is string filePath)
+            {
+                if (File.Exists(filePath))
+                {
+                    await AddImageToQueueAsync(filePath);
+                }
+                else
+                {
+                    await ShowErrorDialog("File Not Found", $"The file no longer exists:\n{filePath}");
+                }
+            }
+        }
+
+        private async Task AddImageToQueueAsync(string filePath)
+        {
+            try
+            {
+                var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(filePath);
+                var props = await file.GetBasicPropertiesAsync();
+
+                Microsoft.UI.Xaml.Media.ImageSource? thumbnailImage = null;
+
+                try
+                {
+                    var thumbnail = await file.GetThumbnailAsync(
+                        Windows.Storage.FileProperties.ThumbnailMode.PicturesView,
+                        140,
+                        Windows.Storage.FileProperties.ThumbnailOptions.UseCurrentScale);
+
+                    if (thumbnail != null && thumbnail.Size > 0)
+                    {
+                        var bitmapImage = new BitmapImage();
+                        await bitmapImage.SetSourceAsync(thumbnail);
+                        thumbnailImage = bitmapImage;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.Debug(ex, "Thumbnail failed for {FilePath}", filePath);
+                }
+
+                var newImage = new ImageQueueItem
+                {
+                    FilePath = filePath,
+                    FileSizeBytes = (long)props.Size,
+                    Status = QueueStatus.Queued,
+                    IsCached = false,
+                    ThumbnailSource = thumbnailImage
+                };
+
+                ImageQueue.Add(newImage);
+
+                // Track in recent files
+                _recentFilesService.AddRecentFile(filePath);
+
+                OnPropertyChanged(nameof(QueueStatusMessage));
+                Log.Information("Added {FileName} to queue", Path.GetFileName(filePath));
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Error adding image to queue: {FilePath}", filePath);
+                await ShowErrorDialog("Error Adding Image", $"Failed to add image:\n{ex.Message}");
+            }
+        }
+
+        private async Task ShowErrorDialog(string title, string message)
+        {
+            var dialog = new ContentDialog
+            {
+                Title = title,
+                Content = message,
+                CloseButtonText = "OK",
+                XamlRoot = this.XamlRoot
+            };
+            await dialog.ShowAsync();
+        }
+
         private async void AddImages_Click(object sender, RoutedEventArgs e)
         {
             // Use file picker to select images
@@ -222,7 +422,7 @@ namespace GeoLens.Views
                             var bitmapImage = new BitmapImage();
                             await bitmapImage.SetSourceAsync(thumbnail);
                             thumbnailImage = bitmapImage;
-                            Debug.WriteLine($"[AddImages] Loaded thumbnail for {file.Name} via Windows thumbnail");
+                            Log.Debug("Loaded thumbnail for {FileName} via Windows thumbnail", file.Name);
                         }
                         else
                         {
@@ -232,7 +432,7 @@ namespace GeoLens.Views
                     catch (Exception ex)
                     {
                         // Fallback: Use ImageSharp for WebP/HEIC support (no codec required)
-                        Debug.WriteLine($"[AddImages] Windows thumbnail failed for {file.Name}, trying ImageSharp: {ex.Message}");
+                        Log.Debug(ex, "Windows thumbnail failed for {FileName}, trying ImageSharp", file.Name);
 
                         try
                         {
@@ -286,11 +486,11 @@ namespace GeoLens.Views
                             pixelStream.Write(pixelData, 0, pixelData.Length);
 
                             thumbnailImage = writeableBitmap;
-                            Debug.WriteLine($"[AddImages] Successfully loaded thumbnail for {file.Name} via ImageSharp ({scaledWidth}x{scaledHeight})");
+                            Log.Debug("Successfully loaded thumbnail for {FileName} via ImageSharp ({Width}x{Height})", file.Name, scaledWidth, scaledHeight);
                         }
                         catch (Exception innerEx)
                         {
-                            Debug.WriteLine($"[AddImages] Failed to load image {file.Name} with ImageSharp: {innerEx.Message}");
+                            Log.Warning(innerEx, "Failed to load image {FileName} with ImageSharp", file.Name);
                             // Use null thumbnail - will show placeholder in UI
                             thumbnailImage = null;
                         }
@@ -307,11 +507,14 @@ namespace GeoLens.Views
                     };
 
                     ImageQueue.Add(newImage);
+
+                    // Track in recent files
+                    App.RecentFilesService.AddRecentFile(file.Path);
                 }
 
                 OnPropertyChanged(nameof(QueueStatusMessage));
 
-                System.Diagnostics.Debug.WriteLine($"Added {files.Count} image(s) to queue");
+                Log.Information("Added {ImageCount} image(s) to queue", files.Count);
             }
         }
 
@@ -322,12 +525,12 @@ namespace GeoLens.Views
 
             if (queuedImages.Count == 0)
             {
-                System.Diagnostics.Debug.WriteLine("No images in queue to process");
+                Log.Warning("No images in queue to process");
                 return;
             }
 
             // Check if API client is available
-            if (App.ApiClient == null)
+            if (_apiClient == null)
             {
                 ReliabilityMessage = "AI service not available";
                 return;
@@ -335,6 +538,12 @@ namespace GeoLens.Views
 
             try
             {
+                // Show batch progress UI
+                BatchProgressPanel.Visibility = Visibility.Visible;
+                BatchProgressBar.Maximum = queuedImages.Count;
+                BatchProgressBar.Value = 0;
+                BatchProgressText.Text = $"Processing 0 of {queuedImages.Count} images...";
+
                 ReliabilityMessage = "Checking cache and processing images...";
 
                 var uncachedImages = new List<ImageQueueItem>();
@@ -357,7 +566,7 @@ namespace GeoLens.Views
                     if (cached != null)
                     {
                         // Cache hit - instant result!
-                        System.Diagnostics.Debug.WriteLine($"[ProcessImages] Cache HIT for: {item.FileName}");
+                        Log.Information("Cache HIT for: {FileName}", item.FileName);
 
                         item.Status = QueueStatus.Cached;
                         item.IsCached = true;
@@ -371,11 +580,15 @@ namespace GeoLens.Views
                         }
 
                         processedCount++;
+
+                        // Update progress
+                        BatchProgressBar.Value = processedCount;
+                        BatchProgressText.Text = $"Processing {processedCount} of {queuedImages.Count} images... ({item.FileName} - cached)";
                     }
                     else
                     {
                         // Cache miss - need to call API
-                        System.Diagnostics.Debug.WriteLine($"[ProcessImages] Cache MISS for: {item.FileName}");
+                        Log.Information("Cache MISS for: {FileName}", item.FileName);
                         uncachedImages.Add(item);
                     }
                 }
@@ -388,7 +601,7 @@ namespace GeoLens.Views
                     var imagePaths = uncachedImages.Select(i => i.FilePath).ToList();
 
                     // Process API and EXIF extraction in parallel
-                    var apiTask = App.ApiClient.InferBatchAsync(imagePaths, topK: 5);
+                    var apiTask = _apiClient.InferBatchAsync(imagePaths, topK: 5);
                     var exifExtractor = new Services.ExifMetadataExtractor();
                     var exifTasks = imagePaths.Select(path =>
                         Task.Run(async () => (path, await exifExtractor.ExtractGpsDataAsync(path)))
@@ -419,17 +632,17 @@ namespace GeoLens.Views
 
                                     if (gps?.HasGps == true)
                                     {
-                                        System.Diagnostics.Debug.WriteLine($"[ProcessImages] Found GPS in {imageItem.FileName}: {gps.Latitude:F6}, {gps.Longitude:F6}");
+                                        Log.Information("Found GPS in {FileName}: {Latitude:F6}, {Longitude:F6}", imageItem.FileName, gps.Latitude, gps.Longitude);
                                     }
 
                                     // Store in cache for future lookups
-                                    await App.CacheService.StorePredictionAsync(
+                                    await _cacheService.StorePredictionAsync(
                                         result.Path,
                                         result.Predictions ?? new List<Services.DTOs.PredictionCandidate>(),
                                         gps
                                     );
 
-                                    System.Diagnostics.Debug.WriteLine($"[ProcessImages] Stored in cache: {System.IO.Path.GetFileName(result.Path)}");
+                                    Log.Debug("Stored in cache: {FileName}", System.IO.Path.GetFileName(result.Path));
 
                                     // Display predictions for first image if no cached images were shown
                                     if (!displayedFirst)
@@ -441,9 +654,14 @@ namespace GeoLens.Views
                                 else
                                 {
                                     imageItem.Status = QueueStatus.Error;
+                                    imageItem.ErrorMessage = result.Error ?? "Unknown error occurred";
                                 }
 
                                 processedCount++;
+
+                                // Update progress
+                                BatchProgressBar.Value = processedCount;
+                                BatchProgressText.Text = $"Processing {processedCount} of {queuedImages.Count} images... ({imageItem.FileName})";
                             }
                         }
                     }
@@ -463,11 +681,15 @@ namespace GeoLens.Views
                     ReliabilityMessage = $"Processed {processedCount} image(s) via AI";
                 }
 
-                System.Diagnostics.Debug.WriteLine($"[ProcessImages] Summary: {cachedCount} cached, {uncachedImages.Count} processed, {processedCount} total");
+                Log.Information("Batch summary: {CachedCount} cached, {ProcessedViaApi} processed via API, {TotalCount} total", cachedCount, uncachedImages.Count, processedCount);
+
+                // Hide batch progress UI
+                BatchProgressPanel.Visibility = Visibility.Collapsed;
+                BatchProgressText.Text = $"Completed: {processedCount} images processed";
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error processing images: {ex.Message}");
+                Log.Error(ex, "Error processing images");
                 ReliabilityMessage = $"Error: {ex.Message}";
 
                 // Mark as error
@@ -476,8 +698,13 @@ namespace GeoLens.Views
                     if (item.Status == QueueStatus.Processing)
                     {
                         item.Status = QueueStatus.Error;
+                        item.ErrorMessage = ex.Message;
                     }
                 }
+
+                // Hide batch progress UI
+                BatchProgressPanel.Visibility = Visibility.Collapsed;
+                BatchProgressText.Text = "Error occurred during processing";
             }
         }
 
@@ -756,17 +983,102 @@ namespace GeoLens.Views
 
         private void RemoveSelected_Click(object sender, RoutedEventArgs e)
         {
-            // Remove currently selected image
+            // Remove currently selected image using command pattern
             var selectedItem = ImageListView.SelectedItem as ImageQueueItem;
-            if (selectedItem != null)
+            if (selectedItem != null && _commandManager != null)
             {
-                ImageQueue.Remove(selectedItem);
+                var command = new RemoveImageCommand(ImageQueue, selectedItem);
+                _commandManager.ExecuteCommand(command);
+                ShowUndoToast($"Removed {selectedItem.FileName} (Ctrl+Z to undo)");
                 OnPropertyChanged(nameof(QueueStatusMessage));
-                Debug.WriteLine($"[RemoveSelected] Removed {selectedItem.FileName}, {ImageQueue.Count} items remaining");
             }
-            else
+            else if (selectedItem == null)
             {
-                Debug.WriteLine("[RemoveSelected] No item selected");
+                Log.Information("No item selected");
+            }
+        }
+
+        private async void RetryImage_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button button && button.Tag is ImageQueueItem item)
+            {
+                Log.Information("Retrying {FileName}", item.FileName);
+
+                // Reset status and clear error
+                item.Status = QueueStatus.Queued;
+                item.ErrorMessage = null;
+
+                // Process the image again (force refresh to bypass cache)
+                try
+                {
+                    item.Status = QueueStatus.Processing;
+
+                    if (_apiClient == null)
+                    {
+                        item.Status = QueueStatus.Error;
+                        item.ErrorMessage = "AI service not available";
+                        return;
+                    }
+
+                    // Process API and EXIF extraction
+                    var apiTask = _apiClient.InferBatchAsync(new List<string> { item.FilePath }, topK: 5);
+                    var exifExtractor = new Services.ExifMetadataExtractor();
+                    var exifTask = exifExtractor.ExtractGpsDataAsync(item.FilePath);
+
+                    await Task.WhenAll(apiTask, exifTask);
+
+                    var response = apiTask.Result;
+                    var exifData = exifTask.Result;
+
+                    if (response != null && response.Count > 0)
+                    {
+                        var result = response[0];
+
+                        if (string.IsNullOrEmpty(result.Error))
+                        {
+                            item.Status = QueueStatus.Done;
+                            item.IsCached = false;
+
+                            // Store in cache for future lookups
+                            await App.CacheService.StorePredictionAsync(
+                                result.Path,
+                                result.Predictions ?? new List<Services.DTOs.PredictionCandidate>(),
+                                exifData
+                            );
+
+                            Log.Information("Successfully processed {FileName}", item.FileName);
+
+                            // Display predictions for this image
+                            await DisplayPredictionsAsync(result, exifData);
+                        }
+                        else
+                        {
+                            item.Status = QueueStatus.Error;
+                            item.ErrorMessage = result.Error ?? "Unknown error occurred";
+                        }
+                    }
+                    else
+                    {
+                        item.Status = QueueStatus.Error;
+                        item.ErrorMessage = "No response from API";
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "Error retrying {FileName}", item.FileName);
+                    item.Status = QueueStatus.Error;
+                    item.ErrorMessage = ex.Message;
+                }
+            }
+        }
+
+        private void RemoveImage_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button button && button.Tag is ImageQueueItem item)
+            {
+                Log.Information("Removing {FileName}", item.FileName);
+                ImageQueue.Remove(item);
+                OnPropertyChanged(nameof(QueueStatusMessage));
             }
         }
 
@@ -785,10 +1097,12 @@ namespace GeoLens.Views
 
             var result = await dialog.ShowAsync();
 
-            if (result == ContentDialogResult.Primary)
+            if (result == ContentDialogResult.Primary && _commandManager != null)
             {
-                ImageQueue.Clear();
-                Predictions.Clear();
+                // Use command pattern for undo support
+                var command = new ClearAllCommand(ImageQueue, Predictions);
+                _commandManager.ExecuteCommand(command);
+
                 _currentImagePath = "";
                 _currentExifData = null;
 
@@ -798,8 +1112,9 @@ namespace GeoLens.Views
                     await _mapProvider.ClearPinsAsync();
                 }
 
+                ShowUndoToast($"Cleared {command.Description} (Ctrl+Z to undo)");
                 OnPropertyChanged(nameof(QueueStatusMessage));
-                Debug.WriteLine("[ClearAll] Queue cleared");
+                Log.Information("Queue cleared");
             }
         }
 
@@ -875,7 +1190,7 @@ namespace GeoLens.Views
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"[Export] Failed to capture map screenshot: {ex.Message}");
+                    Log.Warning(ex, "Failed to capture map screenshot");
                 }
             }
 
@@ -905,22 +1220,22 @@ namespace GeoLens.Views
 
                     if (!string.IsNullOrEmpty(screenshotPath) && File.Exists(screenshotPath))
                     {
-                        Debug.WriteLine($"[Export] Map screenshot captured: {screenshotPath}");
+                        Log.Debug("Map screenshot captured: {ScreenshotPath}", screenshotPath);
                         return screenshotPath;
                     }
                     else
                     {
-                        Debug.WriteLine("[Export] Map screenshot capture returned null or file not found");
+                        Log.Information("Map screenshot capture returned null or file not found");
                         return null;
                     }
                 }
 
-                Debug.WriteLine("[Export] Map provider is not LeafletMapProvider, cannot capture screenshot");
+                Log.Information("Map provider is not LeafletMapProvider, cannot capture screenshot");
                 return null;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[Export] Error capturing map screenshot: {ex.Message}");
+                Log.Error(ex, "Error capturing map screenshot");
                 return null;
             }
         }
@@ -1008,7 +1323,7 @@ namespace GeoLens.Views
                         }
                         catch (Exception ex)
                         {
-                            System.Diagnostics.Debug.WriteLine($"[Export] Failed to load thumbnail: {ex.Message}");
+                            Log.Debug(ex, "Failed to load thumbnail for export");
                         }
 
                         // Load map image for PDF
@@ -1018,11 +1333,11 @@ namespace GeoLens.Views
                             try
                             {
                                 mapBytes = await File.ReadAllBytesAsync(mapImagePath);
-                                Debug.WriteLine($"[Export] Loaded map image: {mapImagePath} ({mapBytes.Length} bytes)");
+                                Log.Debug("Loaded map image: {MapImagePath} ({Bytes} bytes)", mapImagePath, mapBytes.Length);
                             }
                             catch (Exception ex)
                             {
-                                Debug.WriteLine($"[Export] Failed to load map image: {ex.Message}");
+                                Log.Warning(ex, "Failed to load map image");
                             }
                         }
 
@@ -1038,12 +1353,12 @@ namespace GeoLens.Views
                 }
 
                 ShowExportFeedback($"Successfully exported to {Path.GetFileName(exportedPath)}", InfoBarSeverity.Success);
-                System.Diagnostics.Debug.WriteLine($"[Export] Exported to: {exportedPath}");
+                Log.Information("Exported to: {ExportedPath}", exportedPath);
             }
             catch (Exception ex)
             {
                 ShowExportFeedback($"Export failed: {ex.Message}", InfoBarSeverity.Error);
-                System.Diagnostics.Debug.WriteLine($"[Export] Error: {ex}");
+                Log.Error(ex, "Export error");
             }
         }
 
@@ -1059,10 +1374,10 @@ namespace GeoLens.Views
                 .OrderBy(p => p.Rank)
                 .ToList();
 
-            Debug.WriteLine($"[BuildEnhancedPredictionResult] Returning {aiPredictions.Count} unique predictions");
+            Log.Debug("Returning {PredictionCount} unique predictions", aiPredictions.Count);
             foreach (var pred in aiPredictions)
             {
-                Debug.WriteLine($"  - Rank {pred.Rank}: {pred.LocationSummary} ({pred.ProbabilityFormatted})");
+                Log.Debug("  - Rank {Rank}: {LocationSummary} ({Probability})", pred.Rank, pred.LocationSummary, pred.ProbabilityFormatted);
             }
 
             return new EnhancedPredictionResult
@@ -1101,7 +1416,7 @@ namespace GeoLens.Views
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[LoadThumbnail] Error: {ex.Message}");
+                Log.Debug(ex, "Error loading thumbnail");
                 return null;
             }
         }
@@ -1180,7 +1495,7 @@ namespace GeoLens.Views
                         prediction.Longitude,
                         1000); // 1 second animation
 
-                    Debug.WriteLine($"[Prediction] Focused map on {prediction.LocationSummary} ({prediction.Latitude:F6}, {prediction.Longitude:F6})");
+                    Log.Debug("Focused map on {LocationSummary} ({Latitude:F6}, {Longitude:F6})", prediction.LocationSummary, prediction.Latitude, prediction.Longitude);
                 }
             }
         }
@@ -1198,7 +1513,7 @@ namespace GeoLens.Views
                     if (File.Exists(screenshotPath))
                     {
                         File.Delete(screenshotPath);
-                        Debug.WriteLine($"[CleanupScreenshot] Deleted temporary screenshot: {screenshotPath}");
+                        Log.Debug("Deleted temporary screenshot: {ScreenshotPath}", screenshotPath);
                         return;
                     }
                 }
@@ -1209,10 +1524,420 @@ namespace GeoLens.Views
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"[CleanupScreenshot] Failed to delete screenshot {screenshotPath}: {ex.Message}");
+                    Log.Warning(ex, "Failed to delete screenshot {ScreenshotPath}", screenshotPath);
                     return;
                 }
             }
+        }
+
+        // Keyboard Accelerator Event Handlers
+
+        /// <summary>
+        /// Handle Delete key press - remove selected image from queue
+        /// </summary>
+        private void DeleteSelected_Invoked(KeyboardAccelerator sender, Microsoft.UI.Xaml.Input.KeyboardAcceleratorInvokedEventArgs args)
+        {
+            if (ImageQueue.Count > 0 && ImageListView.SelectedItem != null)
+            {
+                RemoveSelected_Click(sender, args);
+                args.Handled = true;
+            }
+        }
+
+        /// <summary>
+        /// Handle F5 key press - refresh/retry current image predictions
+        /// </summary>
+        private async void Refresh_Invoked(KeyboardAccelerator sender, Microsoft.UI.Xaml.Input.KeyboardAcceleratorInvokedEventArgs args)
+        {
+            // Refresh current image predictions
+            if (ImageListView.SelectedItem is ImageQueueItem selectedItem)
+            {
+                // Clear cache for this image
+                await _cacheService.ClearCacheAsync(selectedItem.FilePath);
+
+                // Reset status to queued
+                selectedItem.Status = QueueStatus.Queued;
+                selectedItem.IsCached = false;
+
+                // Re-process the image
+                await ProcessSingleImageAsync(selectedItem);
+
+                args.Handled = true;
+                Log.Information("Refreshed predictions for {FileName}", selectedItem.FileName);
+            }
+        }
+
+        /// <summary>
+        /// Handle Ctrl+, key press - open settings
+        /// </summary>
+        private void OpenSettings_Invoked(KeyboardAccelerator sender, Microsoft.UI.Xaml.Input.KeyboardAcceleratorInvokedEventArgs args)
+        {
+            // Navigate to settings using the NavigationView
+            var settingsItem = NavView.MenuItems.OfType<NavigationViewItem>()
+                .FirstOrDefault(item => item.Tag?.ToString() == "settings");
+
+            if (settingsItem != null)
+            {
+                NavView.SelectedItem = settingsItem;
+            }
+
+            args.Handled = true;
+        }
+
+        /// <summary>
+        /// Process a single image (helper method for refresh functionality)
+        /// </summary>
+        private async Task ProcessSingleImageAsync(ImageQueueItem item)
+        {
+            if (_apiClient == null)
+            {
+                ReliabilityMessage = "AI service not available";
+                return;
+            }
+
+            try
+            {
+                item.Status = QueueStatus.Processing;
+                ReliabilityMessage = "Processing image...";
+
+                // Process API and EXIF extraction in parallel
+                var apiTask = App.ApiClient.InferBatchAsync(new List<string> { item.FilePath }, topK: 5);
+                var exifExtractor = new ExifMetadataExtractor();
+                var exifTask = exifExtractor.ExtractGpsDataAsync(item.FilePath);
+
+                await Task.WhenAll(apiTask, exifTask);
+
+                var response = apiTask.Result;
+                var gps = exifTask.Result;
+
+                if (response != null && response.Count > 0)
+                {
+                    var result = response[0];
+
+                    if (string.IsNullOrEmpty(result.Error))
+                    {
+                        item.Status = QueueStatus.Done;
+                        item.IsCached = false;
+
+                        // Store in cache
+                        await App.CacheService.StorePredictionAsync(
+                            result.Path,
+                            result.Predictions ?? new List<Services.DTOs.PredictionCandidate>(),
+                            gps
+                        );
+
+                        // Display predictions
+                        await DisplayPredictionsAsync(result, gps);
+
+                        ReliabilityMessage = "Image processed successfully";
+                    }
+                    else
+                    {
+                        item.Status = QueueStatus.Error;
+                        ReliabilityMessage = $"Error: {result.Error}";
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                item.Status = QueueStatus.Error;
+                ReliabilityMessage = $"Error: {ex.Message}";
+                Log.Error(ex, "ProcessSingleImage error");
+            }
+        }
+
+        // Copy to Clipboard Event Handlers
+
+        /// <summary>
+        /// Copy coordinates in decimal format (DD.DDDDDD)
+        /// </summary>
+        private void CopyDecimal_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuFlyoutItem item && item.Tag is EnhancedLocationPrediction result)
+            {
+                var text = $"{result.Latitude:F6}, {result.Longitude:F6}";
+                CopyToClipboard(text, "Decimal coordinates copied");
+            }
+        }
+
+        /// <summary>
+        /// Copy coordinates in DMS format (Degrees, Minutes, Seconds)
+        /// </summary>
+        private void CopyDMS_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuFlyoutItem item && item.Tag is EnhancedLocationPrediction result)
+            {
+                var text = ConvertToDMS(result.Latitude, result.Longitude);
+                CopyToClipboard(text, "DMS coordinates copied");
+            }
+        }
+
+        /// <summary>
+        /// Copy Google Maps link for this location
+        /// </summary>
+        private void CopyGoogleMaps_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuFlyoutItem item && item.Tag is EnhancedLocationPrediction result)
+            {
+                var text = $"https://www.google.com/maps?q={result.Latitude},{result.Longitude}";
+                CopyToClipboard(text, "Google Maps link copied");
+            }
+        }
+
+        /// <summary>
+        /// Copy geo URI format (geo:lat,lon)
+        /// </summary>
+        private void CopyGeoUri_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuFlyoutItem item && item.Tag is EnhancedLocationPrediction result)
+            {
+                var text = $"geo:{result.Latitude},{result.Longitude}";
+                CopyToClipboard(text, "Geo URI copied");
+            }
+        }
+
+        /// <summary>
+        /// Copy text to clipboard and show feedback
+        /// </summary>
+        private void CopyToClipboard(string text, string notification)
+        {
+            try
+            {
+                var dataPackage = new Windows.ApplicationModel.DataTransfer.DataPackage();
+                dataPackage.SetText(text);
+                Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dataPackage);
+
+                // Show success feedback
+                ShowExportFeedback(notification, InfoBarSeverity.Success);
+                Log.Debug("Clipboard operation: {Notification} - {Text}", notification, text);
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Failed to copy to clipboard");
+                ShowExportFeedback("Failed to copy to clipboard", InfoBarSeverity.Error);
+            }
+        }
+
+        /// <summary>
+        /// Convert decimal coordinates to DMS (Degrees, Minutes, Seconds) format
+        /// </summary>
+        private string ConvertToDMS(double latitude, double longitude)
+        {
+            string latDir = latitude >= 0 ? "N" : "S";
+            string lonDir = longitude >= 0 ? "E" : "W";
+
+            latitude = Math.Abs(latitude);
+            longitude = Math.Abs(longitude);
+
+            int latDeg = (int)latitude;
+            int latMin = (int)((latitude - latDeg) * 60);
+            double latSec = ((latitude - latDeg) * 60 - latMin) * 60;
+
+            int lonDeg = (int)longitude;
+            int lonMin = (int)((longitude - lonDeg) * 60);
+            double lonSec = ((longitude - lonDeg) * 60 - lonMin) * 60;
+
+            return $"{latDeg}°{latMin}'{latSec:F2}\"{latDir}, {lonDeg}°{lonMin}'{lonSec:F2}\"{lonDir}";
+        }
+
+        // ============================================================================
+        // UNDO/REDO COMMAND SYSTEM
+        // ============================================================================
+
+        /// <summary>
+        /// Handle CommandManager state changes to update UI button states
+        /// </summary>
+        private void CommandManager_StateChanged(object? sender, EventArgs e)
+        {
+            if (_commandManager == null) return;
+
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                UndoButton.IsEnabled = _commandManager.CanUndo;
+                RedoButton.IsEnabled = _commandManager.CanRedo;
+
+                // Update tooltips with command descriptions
+                UndoButton.Label = _commandManager.CanUndo
+                    ? $"Undo: {_commandManager.GetUndoDescription()}"
+                    : "Undo";
+
+                RedoButton.Label = _commandManager.CanRedo
+                    ? $"Redo: {_commandManager.GetRedoDescription()}"
+                    : "Redo";
+            });
+        }
+
+        /// <summary>
+        /// Undo button click handler
+        /// </summary>
+        private void Undo_Click(object sender, RoutedEventArgs e)
+        {
+            if (_commandManager?.CanUndo == true)
+            {
+                var description = _commandManager.Undo();
+                if (description != null)
+                {
+                    ShowUndoToast($"Undone: {description}");
+                    Log.Information("Undo: {Description}", description);
+                    OnPropertyChanged(nameof(QueueStatusMessage));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Redo button click handler
+        /// </summary>
+        private void Redo_Click(object sender, RoutedEventArgs e)
+        {
+            if (_commandManager?.CanRedo == true)
+            {
+                var description = _commandManager.Redo();
+                if (description != null)
+                {
+                    ShowUndoToast($"Redone: {description}");
+                    Log.Information("Redo: {Description}", description);
+                    OnPropertyChanged(nameof(QueueStatusMessage));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Undo keyboard accelerator handler (Ctrl+Z)
+        /// </summary>
+        private void Undo_Invoked(KeyboardAccelerator sender, Microsoft.UI.Xaml.Input.KeyboardAcceleratorInvokedEventArgs args)
+        {
+            if (_commandManager?.CanUndo == true)
+            {
+                Undo_Click(sender, args);
+                args.Handled = true;
+            }
+        }
+
+        /// <summary>
+        /// Redo keyboard accelerator handler (Ctrl+Y)
+        /// </summary>
+        private void Redo_Invoked(KeyboardAccelerator sender, Microsoft.UI.Xaml.Input.KeyboardAcceleratorInvokedEventArgs args)
+        {
+            if (_commandManager?.CanRedo == true)
+            {
+                Redo_Click(sender, args);
+                args.Handled = true;
+            }
+        }
+
+        /// <summary>
+        /// Show a toast notification for undo/redo actions
+        /// </summary>
+        private void ShowUndoToast(string message)
+        {
+            ExportFeedbackBar.Message = message;
+            ExportFeedbackBar.Severity = InfoBarSeverity.Informational;
+            ExportFeedbackBar.IsOpen = true;
+
+            // Auto-close after 3 seconds
+            var timer = new System.Timers.Timer(3000) { AutoReset = false };
+            timer.Elapsed += (s, e) =>
+            {
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    ExportFeedbackBar.IsOpen = false;
+                });
+                timer.Dispose();
+            };
+            timer.Start();
+        }
+
+        // ============================================================================
+        // DRAG-AND-DROP REORDERING
+        // ============================================================================
+
+        /// <summary>
+        /// Handle drag operation start
+        /// </summary>
+        private void ImageListView_DragItemsStarting(object sender, DragItemsStartingEventArgs e)
+        {
+            if (e.Items.Count > 0 && e.Items[0] is ImageQueueItem item)
+            {
+                _dragStartIndex = ImageQueue.IndexOf(item);
+                e.Data.Properties.Add("DraggedItem", item);
+                Log.Debug("Starting drag for item at index {DragStartIndex}: {FileName}", _dragStartIndex, item.FileName);
+            }
+        }
+
+        /// <summary>
+        /// Handle drag over event (show visual feedback)
+        /// </summary>
+        private void ImageListView_DragOver(object sender, DragEventArgs e)
+        {
+            // Allow reordering
+            e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
+        }
+
+        /// <summary>
+        /// Handle drop event (execute reorder command)
+        /// </summary>
+        private void ImageListView_Drop(object sender, DragEventArgs e)
+        {
+            // Get the drop target position
+            if (sender is ListView listView && e.Data.Properties.ContainsKey("DraggedItem"))
+            {
+                var draggedItem = e.Data.Properties["DraggedItem"] as ImageQueueItem;
+                if (draggedItem == null || _dragStartIndex < 0)
+                {
+                    Log.Information("Invalid drag state");
+                    return;
+                }
+
+                // Get drop position
+                var position = e.GetPosition(listView);
+                var dropTargetIndex = GetDropTargetIndex(listView, position);
+
+                if (dropTargetIndex >= 0 && dropTargetIndex < ImageQueue.Count && dropTargetIndex != _dragStartIndex)
+                {
+                    // Create and execute reorder command
+                    var command = new ReorderImagesCommand(
+                        ImageQueue,
+                        draggedItem,
+                        _dragStartIndex,
+                        dropTargetIndex
+                    );
+
+                    _commandManager?.ExecuteCommand(command);
+
+                    Log.Information("Reordered item from {FromIndex} to {ToIndex}", _dragStartIndex, dropTargetIndex);
+                    OnPropertyChanged(nameof(QueueStatusMessage));
+                }
+
+                _dragStartIndex = -1;
+            }
+        }
+
+        /// <summary>
+        /// Calculate the drop target index based on mouse position
+        /// </summary>
+        private int GetDropTargetIndex(ListView listView, Windows.Foundation.Point position)
+        {
+            // Simple approach: find the nearest item
+            for (int i = 0; i < ImageQueue.Count; i++)
+            {
+                var container = listView.ContainerFromIndex(i) as ListViewItem;
+                if (container != null)
+                {
+                    var transform = container.TransformToVisual(listView);
+                    var itemPosition = transform.TransformPoint(new Windows.Foundation.Point(0, 0));
+                    var itemHeight = container.ActualHeight;
+
+                    if (position.Y >= itemPosition.Y && position.Y < itemPosition.Y + itemHeight)
+                    {
+                        // Determine if we should insert before or after this item
+                        var midPoint = itemPosition.Y + (itemHeight / 2);
+                        return position.Y < midPoint ? i : i + 1;
+                    }
+                }
+            }
+
+            // Default to end of list
+            return ImageQueue.Count - 1;
         }
     }
 }

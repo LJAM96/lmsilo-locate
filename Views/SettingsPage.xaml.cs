@@ -1,5 +1,6 @@
 using GeoLens.Models;
 using GeoLens.Services;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System;
@@ -10,6 +11,11 @@ namespace GeoLens.Views
 {
     public sealed partial class SettingsPage : Page
     {
+        // Injected services
+        private readonly UserSettingsService _settingsService;
+        private readonly PredictionCacheService _cacheService;
+        private readonly AuditLogService _auditService;
+
         private bool _isLoading = true;
 
         public SettingsPage()
@@ -17,6 +23,11 @@ namespace GeoLens.Views
             InitializeComponent();
             Loaded += Page_Loaded;
             Unloaded += Page_Unloaded;
+
+            // Get services from DI container
+            _settingsService = App.Services.GetRequiredService<UserSettingsService>();
+            _cacheService = App.Services.GetRequiredService<PredictionCacheService>();
+            _auditService = App.Services.GetRequiredService<AuditLogService>();
         }
 
         private async void Page_Loaded(object sender, RoutedEventArgs e)
@@ -36,7 +47,7 @@ namespace GeoLens.Views
         {
             try
             {
-                var settings = await App.SettingsService.LoadSettingsAsync();
+                var settings = await _settingsService.LoadSettingsAsync();
 
                 // Cache Settings
                 EnableCacheToggle.IsOn = settings.EnableCache;
@@ -57,6 +68,7 @@ namespace GeoLens.Views
 
                 // Interface Settings
                 ShowThumbnailsToggle.IsOn = settings.ShowThumbnails;
+                ShowSkeletonLoadersToggle.IsOn = settings.ShowSkeletonLoaders;
 
                 // Thumbnail Size
                 ThumbnailSizeSmallRadio.IsChecked = settings.ThumbnailSize == ThumbnailSize.Small;
@@ -84,7 +96,7 @@ namespace GeoLens.Views
         {
             try
             {
-                var stats = await App.CacheService.GetCacheStatisticsAsync();
+                var stats = await _cacheService.GetCacheStatisticsAsync();
 
                 // Update main cache info
                 CacheInfoText.Text = $"{stats.TotalEntries} entries, {stats.DatabaseSizeFormatted}";
@@ -95,6 +107,11 @@ namespace GeoLens.Views
                 StatCacheMissesText.Text = $"Cache Misses: {stats.CacheMisses}";
                 StatHitRateText.Text = $"Hit Rate: {stats.HitRate:P1}";
                 StatTotalSizeText.Text = $"Total Size: {stats.DatabaseSizeFormatted}";
+
+                // New enhanced statistics
+                StatAverageSizeText.Text = $"Average Entry Size: {stats.AverageEntrySizeFormatted}";
+                StatOldestEntryText.Text = $"Oldest Entry: {(stats.OldestEntryDate?.ToLocalTime().ToString("g") ?? "N/A")}";
+                StatNewestEntryText.Text = $"Newest Entry: {(stats.NewestAccessDate?.ToLocalTime().ToString("g") ?? "N/A")}";
 
                 Debug.WriteLine($"[SettingsPage] Cache statistics updated: {stats.TotalEntries} entries");
             }
@@ -112,7 +129,7 @@ namespace GeoLens.Views
         {
             try
             {
-                var settings = App.SettingsService.Settings;
+                var settings = _settingsService.Settings;
 
                 if (!string.IsNullOrEmpty(settings.DetectedGpu))
                 {
@@ -166,7 +183,7 @@ namespace GeoLens.Views
 
             try
             {
-                var settings = App.SettingsService.Settings;
+                var settings = _settingsService.Settings;
 
                 // Cache Settings
                 settings.EnableCache = EnableCacheToggle.IsOn;
@@ -187,16 +204,49 @@ namespace GeoLens.Views
 
                 // Interface Settings
                 settings.ShowThumbnails = ShowThumbnailsToggle.IsOn;
+                settings.ShowSkeletonLoaders = ShowSkeletonLoadersToggle.IsOn;
+
+                // Validate settings before saving
+                if (!ValidateCacheSettings(settings))
+                {
+                    CacheValidationMessage.Visibility = Visibility.Visible;
+                    await ShowErrorDialog("Invalid Settings",
+                        "Cache expiration must be between 1 and 365 days, or set to Never.");
+                    await LoadSettingsAsync(); // Revert to previous values
+                    return;
+                }
+                else
+                {
+                    CacheValidationMessage.Visibility = Visibility.Collapsed;
+                }
 
                 // Save with debouncing (500ms delay)
-                await App.SettingsService.SaveSettingsAsync();
+                await _settingsService.SaveSettingsAsync();
 
                 Debug.WriteLine("[SettingsPage] Settings changed and saved");
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[SettingsPage] Error saving settings: {ex.Message}");
+                await ShowErrorDialog("Save Failed", $"Failed to save settings: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Validate cache settings
+        /// </summary>
+        private bool ValidateCacheSettings(UserSettings settings)
+        {
+            // Validate cache expiration days
+            // Valid values: 0 (Never), or 1-365 days
+            if (settings.CacheExpirationDays < 0 || settings.CacheExpirationDays > 365)
+            {
+                if (settings.CacheExpirationDays != 0) // 0 = Never
+                    return false;
+            }
+
+            // Add more validation as needed
+            return true;
         }
 
         /// <summary>
@@ -209,7 +259,7 @@ namespace GeoLens.Views
 
             try
             {
-                var settings = App.SettingsService.Settings;
+                var settings = _settingsService.Settings;
 
                 if (ThumbnailSizeSmallRadio.IsChecked == true)
                     settings.ThumbnailSize = ThumbnailSize.Small;
@@ -218,7 +268,7 @@ namespace GeoLens.Views
                 else if (ThumbnailSizeLargeRadio.IsChecked == true)
                     settings.ThumbnailSize = ThumbnailSize.Large;
 
-                await App.SettingsService.SaveSettingsAsync();
+                await _settingsService.SaveSettingsAsync();
                 Debug.WriteLine($"[SettingsPage] Thumbnail size changed to: {settings.ThumbnailSize}");
             }
             catch (Exception ex)
@@ -237,7 +287,7 @@ namespace GeoLens.Views
 
             try
             {
-                var settings = App.SettingsService.Settings;
+                var settings = _settingsService.Settings;
 
                 if (ThemeDarkRadio.IsChecked == true)
                     settings.Theme = AppTheme.Dark;
@@ -246,7 +296,7 @@ namespace GeoLens.Views
                 else if (ThemeSystemRadio.IsChecked == true)
                     settings.Theme = AppTheme.System;
 
-                await App.SettingsService.SaveSettingsAsync();
+                await _settingsService.SaveSettingsAsync();
                 Debug.WriteLine($"[SettingsPage] Theme changed to: {settings.Theme}");
 
                 // Note: Actual theme change would require app restart or manual theme switching
@@ -284,7 +334,7 @@ namespace GeoLens.Views
                 if (result == ContentDialogResult.Primary)
                 {
                     // Clear the cache
-                    await App.CacheService.ClearAllAsync();
+                    await _cacheService.ClearAllAsync();
 
                     // Update statistics display
                     await UpdateCacheStatisticsAsync();
@@ -340,8 +390,8 @@ namespace GeoLens.Views
         {
             try
             {
-                var totalCount = await App.AuditService.GetTotalCountAsync();
-                var oldestEntry = await App.AuditService.GetOldestEntryDateAsync();
+                var totalCount = await _auditService.GetTotalCountAsync();
+                var oldestEntry = await _auditService.GetOldestEntryDateAsync();
 
                 AuditCountText.Text = totalCount.ToString();
                 AuditOldestEntryText.Text = oldestEntry?.ToLocalTime().ToString("g") ?? "N/A";
@@ -375,7 +425,7 @@ namespace GeoLens.Views
                 var file = await savePicker.PickSaveFileAsync();
                 if (file != null)
                 {
-                    await App.AuditService.ExportToCsvAsync(file.Path);
+                    await _auditService.ExportToCsvAsync(file.Path);
                     await ShowInfoDialog("Export Successful", $"Audit log exported to:\n{file.Path}");
                     Debug.WriteLine($"[SettingsPage] Audit log exported to CSV: {file.Path}");
                 }
@@ -405,7 +455,7 @@ namespace GeoLens.Views
                 var file = await savePicker.PickSaveFileAsync();
                 if (file != null)
                 {
-                    await App.AuditService.ExportToJsonAsync(file.Path);
+                    await _auditService.ExportToJsonAsync(file.Path);
                     await ShowInfoDialog("Export Successful", $"Audit log exported to:\n{file.Path}");
                     Debug.WriteLine($"[SettingsPage] Audit log exported to JSON: {file.Path}");
                 }
@@ -435,7 +485,7 @@ namespace GeoLens.Views
                 var file = await savePicker.PickSaveFileAsync();
                 if (file != null)
                 {
-                    await App.AuditService.ExportToPdfAsync(file.Path);
+                    await _auditService.ExportToPdfAsync(file.Path);
                     await ShowInfoDialog("Export Successful", $"Audit log exported to:\n{file.Path}");
                     Debug.WriteLine($"[SettingsPage] Audit log exported to PDF: {file.Path}");
                 }
@@ -473,7 +523,7 @@ namespace GeoLens.Views
                 if (result == ContentDialogResult.Primary)
                 {
                     // Clear the audit log
-                    await App.AuditService.ClearAllEntriesAsync();
+                    await _auditService.ClearAllEntriesAsync();
 
                     // Update statistics display
                     await UpdateAuditStatisticsAsync();

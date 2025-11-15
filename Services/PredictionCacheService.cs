@@ -1,5 +1,6 @@
 using GeoLens.Models;
 using GeoLens.Services.DTOs;
+using Serilog;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -89,7 +90,7 @@ namespace GeoLens.Services
                     await command.ExecuteNonQueryAsync();
                     _isInitialized = true;
 
-                    Debug.WriteLine($"[PredictionCacheService] Database initialized at: {_dbPath}");
+                    Log.Information("Database initialized at: {DbPath}", _dbPath);
                 }
                 finally
                 {
@@ -98,7 +99,7 @@ namespace GeoLens.Services
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[PredictionCacheService] Failed to initialize database: {ex.Message}");
+                Log.Error(ex, "Failed to initialize database");
                 throw;
             }
         }
@@ -116,7 +117,7 @@ namespace GeoLens.Services
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[PredictionCacheService] Failed to compute hash for {imagePath}: {ex.Message}");
+                Log.Error(ex, "Failed to compute hash for {ImagePath}", imagePath);
                 throw;
             }
         }
@@ -149,10 +150,10 @@ namespace GeoLens.Services
                     {
                         if (t.IsFaulted)
                         {
-                            Debug.WriteLine($"[PredictionCacheService] Failed to update access time for {imageHash}: {t.Exception?.GetBaseException().Message}");
+                            Log.Warning(t.Exception?.GetBaseException(), "Failed to update access time for {ImageHash}", imageHash);
                         }
                     }, TaskScheduler.Default);
-                    Debug.WriteLine($"[PredictionCacheService] Memory cache hit for: {Path.GetFileName(imagePath)}");
+                    Log.Information("Memory cache hit for: {FileName}", Path.GetFileName(imagePath));
                     return cachedEntry;
                 }
 
@@ -206,14 +207,14 @@ namespace GeoLens.Services
                         _memoryCache.TryAdd(imageHash, entry);
 
                         Interlocked.Increment(ref _cacheHits);
-                        Debug.WriteLine($"[PredictionCacheService] Database cache hit for: {Path.GetFileName(imagePath)}");
+                        Log.Information("Database cache hit for: {FileName}", Path.GetFileName(imagePath));
 
                         // Update access time asynchronously (fire and forget with error handling)
                         _ = UpdateAccessTimeAsync(imageHash).ContinueWith(t =>
                         {
                             if (t.IsFaulted)
                             {
-                                Debug.WriteLine($"[PredictionCacheService] Failed to update access time for {imageHash}: {t.Exception?.GetBaseException().Message}");
+                                Log.Warning(t.Exception?.GetBaseException(), "Failed to update access time for {ImageHash}", imageHash);
                             }
                         }, TaskScheduler.Default);
 
@@ -227,12 +228,12 @@ namespace GeoLens.Services
 
                 // Cache miss
                 Interlocked.Increment(ref _cacheMisses);
-                Debug.WriteLine($"[PredictionCacheService] Cache miss for: {Path.GetFileName(imagePath)}");
+                Log.Information("Cache miss for: {FileName}", Path.GetFileName(imagePath));
                 return null;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[PredictionCacheService] Error getting cached prediction: {ex.Message}");
+                Log.Error(ex, "Error getting cached prediction");
                 return null;
             }
         }
@@ -296,7 +297,7 @@ namespace GeoLens.Services
                     };
                     _memoryCache.AddOrUpdate(imageHash, entry, (_, _) => entry);
 
-                    Debug.WriteLine($"[PredictionCacheService] Stored prediction for: {Path.GetFileName(imagePath)}");
+                    Log.Information("Stored prediction for: {FileName}", Path.GetFileName(imagePath));
                 }
                 finally
                 {
@@ -305,7 +306,7 @@ namespace GeoLens.Services
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[PredictionCacheService] Error storing prediction: {ex.Message}");
+                Log.Error(ex, "Error storing prediction");
                 throw;
             }
         }
@@ -342,19 +343,21 @@ namespace GeoLens.Services
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[PredictionCacheService] Error updating access time: {ex.Message}");
+                Log.Warning(ex, "Error updating access time");
             }
         }
 
         /// <summary>
         /// Clear cache entries older than the specified number of days
         /// </summary>
-        public async Task ClearExpiredAsync(int expirationDays = 90)
+        public async Task ClearExpiredAsync(int? expirationDays = null)
         {
             if (!_isInitialized)
             {
                 await InitializeAsync();
             }
+
+            var actualExpirationDays = expirationDays ?? ConfigurationService.Instance.Config.GeoLens.Cache.DefaultExpirationDays;
 
             try
             {
@@ -375,11 +378,11 @@ namespace GeoLens.Services
                         DELETE FROM predictions
                         WHERE datetime(cached_at) < datetime('now', '-' || @days || ' days')
                     ";
-                    command.Parameters.AddWithValue("@days", expirationDays);
+                    command.Parameters.AddWithValue("@days", actualExpirationDays);
 
                     var deletedCount = await command.ExecuteNonQueryAsync();
 
-                    Debug.WriteLine($"[PredictionCacheService] Cleared {deletedCount} expired entries (>{expirationDays} days old)");
+                    Log.Information("Cleared {DeletedCount} expired entries (>{ExpirationDays} days old)", deletedCount, actualExpirationDays);
                 }
                 finally
                 {
@@ -391,7 +394,7 @@ namespace GeoLens.Services
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[PredictionCacheService] Error clearing expired entries: {ex.Message}");
+                Log.Error(ex, "Error clearing expired entries");
                 throw;
             }
         }
@@ -448,6 +451,9 @@ namespace GeoLens.Services
                         // Calculate database size
                         var dbSizeBytes = new FileInfo(_dbPath).Length;
 
+                        // Calculate average entry size
+                        long averageEntrySize = totalEntries > 0 ? dbSizeBytes / totalEntries : 0;
+
                         var stats = new CacheStatistics
                         {
                             TotalEntries = totalEntries,
@@ -458,10 +464,11 @@ namespace GeoLens.Services
                             MemoryCacheSize = _memoryCache.Count,
                             DatabaseSizeBytes = dbSizeBytes,
                             OldestEntryDate = oldestEntry,
-                            NewestAccessDate = newestAccess
+                            NewestAccessDate = newestAccess,
+                            AverageEntrySize = averageEntrySize
                         };
 
-                        Debug.WriteLine($"[PredictionCacheService] Statistics: {stats.TotalEntries} entries, {stats.HitRate:P1} hit rate");
+                        Log.Information("Cache statistics: {TotalEntries} entries, {HitRate:P1} hit rate, avg size {AverageEntrySize}", stats.TotalEntries, stats.HitRate, stats.AverageEntrySizeFormatted);
                         return stats;
                     }
                 }
@@ -474,7 +481,7 @@ namespace GeoLens.Services
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[PredictionCacheService] Error getting statistics: {ex.Message}");
+                Log.Error(ex, "Error getting cache statistics");
                 return new CacheStatistics();
             }
         }
@@ -505,7 +512,7 @@ namespace GeoLens.Services
                     Interlocked.Exchange(ref _cacheHits, 0);
                     Interlocked.Exchange(ref _cacheMisses, 0);
 
-                    Debug.WriteLine($"[PredictionCacheService] Cleared all {deletedCount} cache entries");
+                    Log.Information("Cleared all {DeletedCount} cache entries", deletedCount);
                 }
                 finally
                 {
@@ -516,7 +523,7 @@ namespace GeoLens.Services
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[PredictionCacheService] Error clearing all entries: {ex.Message}");
+                Log.Error(ex, "Error clearing all cache entries");
                 throw;
             }
         }
@@ -538,7 +545,7 @@ namespace GeoLens.Services
                     command.CommandText = "VACUUM";
                     await command.ExecuteNonQueryAsync();
 
-                    Debug.WriteLine("[PredictionCacheService] Database vacuumed successfully");
+                    Log.Information("Database vacuumed successfully");
                 }
                 finally
                 {
@@ -547,7 +554,7 @@ namespace GeoLens.Services
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[PredictionCacheService] Error vacuuming database: {ex.Message}");
+                Log.Warning(ex, "Error vacuuming database");
             }
         }
 
@@ -563,7 +570,7 @@ namespace GeoLens.Services
             SQLiteConnection.ClearAllPools();
             GC.SuppressFinalize(this);
 
-            Debug.WriteLine("[PredictionCacheService] Disposed");
+            Log.Information("PredictionCacheService disposed");
         }
     }
 
@@ -595,6 +602,7 @@ namespace GeoLens.Services
         public long DatabaseSizeBytes { get; set; }
         public DateTime? OldestEntryDate { get; set; }
         public DateTime? NewestAccessDate { get; set; }
+        public long AverageEntrySize { get; set; }
 
         /// <summary>
         /// Cache hit rate (0.0 to 1.0)
@@ -622,6 +630,23 @@ namespace GeoLens.Services
                 if (DatabaseSizeBytes < 1024 * 1024 * 1024)
                     return $"{DatabaseSizeBytes / (1024.0 * 1024.0):F1} MB";
                 return $"{DatabaseSizeBytes / (1024.0 * 1024.0 * 1024.0):F1} GB";
+            }
+        }
+
+        /// <summary>
+        /// Human-readable average entry size
+        /// </summary>
+        public string AverageEntrySizeFormatted
+        {
+            get
+            {
+                if (AverageEntrySize < 1024)
+                    return $"{AverageEntrySize} B";
+                if (AverageEntrySize < 1024 * 1024)
+                    return $"{AverageEntrySize / 1024.0:F1} KB";
+                if (AverageEntrySize < 1024 * 1024 * 1024)
+                    return $"{AverageEntrySize / (1024.0 * 1024.0):F1} MB";
+                return $"{AverageEntrySize / (1024.0 * 1024.0 * 1024.0):F1} GB";
             }
         }
     }

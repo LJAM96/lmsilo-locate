@@ -11,9 +11,20 @@ namespace GeoLens.Services
     /// </summary>
     public class GeographicClusterAnalyzer
     {
-        private const double ClusterRadiusKm = 100.0; // Maximum distance for clustering (100km threshold)
-        private const double ConfidenceBoostFactor = 0.15; // Base boost factor for clustered predictions
-        private const int MinimumClusterSize = 2; // Minimum predictions required to form a cluster
+        private readonly double _clusterRadiusKm;
+        private readonly double _confidenceBoostFactor;
+        private readonly int _minimumClusterSize;
+        private readonly ConfigurationService _configService;
+
+        public GeographicClusterAnalyzer(ConfigurationService configService)
+        {
+            _configService = configService ?? throw new ArgumentNullException(nameof(configService));
+
+            var config = _configService.Config.GeoLens.Processing;
+            _clusterRadiusKm = config.ClusterRadiusKm;
+            _confidenceBoostFactor = config.ClusterBoostPercent / 100.0; // Convert percentage to decimal
+            _minimumClusterSize = config.MinimumClusterSize;
+        }
 
         /// <summary>
         /// Analyze predictions to detect geographic clustering and boost confidence
@@ -22,7 +33,7 @@ namespace GeoLens.Services
         /// <returns>Cluster analysis result with clustering information</returns>
         public ClusterAnalysisResult AnalyzeClusters(List<EnhancedLocationPrediction> predictions)
         {
-            if (predictions == null || predictions.Count < MinimumClusterSize)
+            if (predictions == null || predictions.Count < _minimumClusterSize)
             {
                 return new ClusterAnalysisResult
                 {
@@ -40,7 +51,7 @@ namespace GeoLens.Services
                 // Find the largest cluster within the radius threshold
                 var clusterInfo = FindLargestCluster(predictions);
 
-                if (clusterInfo.ClusteredPredictions.Count >= MinimumClusterSize)
+                if (clusterInfo.ClusteredPredictions.Count >= _minimumClusterSize)
                 {
                     // Calculate cluster statistics
                     var (centerLat, centerLon) = FindClusterCenter(clusterInfo.ClusteredPredictions);
@@ -210,7 +221,7 @@ namespace GeoLens.Services
                         prediction.Latitude, prediction.Longitude
                     );
 
-                    if (distance <= ClusterRadiusKm)
+                    if (distance <= _clusterRadiusKm)
                     {
                         cluster.Add(prediction);
                     }
@@ -255,7 +266,7 @@ namespace GeoLens.Services
 
         /// <summary>
         /// Calculate confidence boost based on cluster size
-        /// Formula: boost = 0.15 * (clusterSize / totalPredictions)
+        /// Formula: boost = boostFactor * (clusterSize / totalPredictions)
         /// </summary>
         private double CalculateConfidenceBoost(int clusterSize, int totalPredictions)
         {
@@ -264,7 +275,7 @@ namespace GeoLens.Services
                 return 0;
             }
 
-            return ConfidenceBoostFactor * ((double)clusterSize / totalPredictions);
+            return _confidenceBoostFactor * ((double)clusterSize / totalPredictions);
         }
 
         /// <summary>

@@ -21,6 +21,7 @@ namespace GeoLens.Models
         private QueueStatus _status;
         private bool _isSelected;
         private ImageSource? _thumbnailSource;
+        private string? _errorMessage;
 
         public string FilePath { get; set; } = string.Empty;
         public string FileName => System.IO.Path.GetFileName(FilePath);
@@ -70,6 +71,22 @@ namespace GeoLens.Models
                 }
             }
         }
+
+        public string? ErrorMessage
+        {
+            get => _errorMessage;
+            set
+            {
+                if (_errorMessage != value)
+                {
+                    _errorMessage = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(HasError));
+                }
+            }
+        }
+
+        public bool HasError => Status == QueueStatus.Error && !string.IsNullOrEmpty(ErrorMessage);
 
         public string StatusText => Status switch
         {

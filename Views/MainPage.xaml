@@ -11,6 +11,15 @@
     mc:Ignorable="d"
     Background="{StaticResource AppBackgroundBrush}">
 
+    <!-- Page-level Keyboard Accelerators -->
+    <Page.KeyboardAccelerators>
+        <KeyboardAccelerator Key="Delete" Invoked="DeleteSelected_Invoked"/>
+        <KeyboardAccelerator Key="F5" Invoked="Refresh_Invoked"/>
+        <KeyboardAccelerator Key="OemComma" Modifiers="Control" Invoked="OpenSettings_Invoked"/>
+        <KeyboardAccelerator Key="Z" Modifiers="Control" Invoked="Undo_Invoked"/>
+        <KeyboardAccelerator Key="Y" Modifiers="Control" Invoked="Redo_Invoked"/>
+    </Page.KeyboardAccelerators>
+
     <!-- Page Transitions -->
     <Page.Transitions>
         <TransitionCollection>
@@ -54,8 +63,13 @@
         <NavigationView.Content>
             <!-- Navigation Container -->
             <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
                 <!-- Main Geolocation Content -->
-                <Grid x:Name="MainContentGrid" Visibility="Visible">
+                <Grid x:Name="MainContentGrid" Grid.Row="0" Visibility="Visible">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="320"/> <!-- Left Panel: Image Queue -->
                     <ColumnDefinition Width="*"/> <!-- Center Panel: Globe/Map -->
@@ -73,6 +87,7 @@
 
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/> <!-- CommandBar -->
+                <RowDefinition Height="Auto"/> <!-- Batch Progress -->
                 <RowDefinition Height="*"/> <!-- Image List -->
                 <RowDefinition Height="Auto"/> <!-- Status Bar -->
             </Grid.RowDefinitions>
@@ -85,7 +100,22 @@
 
                 <AppBarButton Label="Add Images"
                              Icon="Add"
-                             Click="AddImages_Click"/>
+                             Click="AddImages_Click">
+                    <AppBarButton.KeyboardAccelerators>
+                        <KeyboardAccelerator Key="O" Modifiers="Control"/>
+                    </AppBarButton.KeyboardAccelerators>
+                    <AppBarButton.Flyout>
+                        <MenuFlyout x:Name="AddImagesFlyout">
+                            <MenuFlyoutItem Text="Browse for images..."
+                                          Icon="Add"
+                                          Click="AddImages_Click"/>
+                            <MenuFlyoutSeparator/>
+                            <MenuFlyoutSubItem Text="Recent Files" x:Name="RecentFilesMenu">
+                                <!-- Dynamically populated -->
+                            </MenuFlyoutSubItem>
+                        </MenuFlyout>
+                    </AppBarButton.Flyout>
+                </AppBarButton>
 
                 <AppBarButton Label="Process"
                              Icon="Play"
@@ -95,7 +125,11 @@
 
                 <AppBarButton Label="Export"
                              Icon="Save"
-                             Click="ExportResult_Click"/>
+                             Click="ExportResult_Click">
+                    <AppBarButton.KeyboardAccelerators>
+                        <KeyboardAccelerator Key="E" Modifiers="Control"/>
+                    </AppBarButton.KeyboardAccelerators>
+                </AppBarButton>
 
                 <AppBarButton Label="Delete"
                              Icon="Delete"
@@ -105,18 +139,61 @@
 
                 <AppBarButton Label="Clear All"
                              Icon="ClearSelection"
-                             Click="ClearAll_Click"/>
+                             Click="ClearAll_Click">
+                    <AppBarButton.KeyboardAccelerators>
+                        <KeyboardAccelerator Key="L" Modifiers="Control"/>
+                    </AppBarButton.KeyboardAccelerators>
+                </AppBarButton>
+
+                <AppBarSeparator/>
+
+                <AppBarButton x:Name="UndoButton"
+                             Label="Undo"
+                             Icon="Undo"
+                             Click="Undo_Click"
+                             IsEnabled="False">
+                    <AppBarButton.KeyboardAccelerators>
+                        <KeyboardAccelerator Key="Z" Modifiers="Control"/>
+                    </AppBarButton.KeyboardAccelerators>
+                </AppBarButton>
+
+                <AppBarButton x:Name="RedoButton"
+                             Label="Redo"
+                             Icon="Redo"
+                             Click="Redo_Click"
+                             IsEnabled="False">
+                    <AppBarButton.KeyboardAccelerators>
+                        <KeyboardAccelerator Key="Y" Modifiers="Control"/>
+                    </AppBarButton.KeyboardAccelerators>
+                </AppBarButton>
             </CommandBar>
+
+            <!-- Batch Progress UI -->
+            <StackPanel Grid.Row="1" Padding="12,8" x:Name="BatchProgressPanel" Visibility="Collapsed">
+                <ProgressBar x:Name="BatchProgressBar"
+                            Maximum="100"
+                            Value="0"/>
+                <TextBlock x:Name="BatchProgressText"
+                          Margin="0,4,0,0"
+                          FontSize="12"
+                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+            </StackPanel>
 
             <!-- Image ListView (Single Column) -->
             <ListView x:Name="ImageListView"
-                     Grid.Row="1"
+                     Grid.Row="2"
                      ItemsSource="{x:Bind ImageQueue}"
                      SelectionMode="Single"
                      Padding="12,8"
                      IsItemClickEnabled="False"
                      ShowsScrollingPlaceholders="True"
-                     SelectionChanged="ImageListView_SelectionChanged">
+                     SelectionChanged="ImageListView_SelectionChanged"
+                     AllowDrop="True"
+                     CanReorderItems="True"
+                     CanDragItems="True"
+                     DragItemsStarting="ImageListView_DragItemsStarting"
+                     DragOver="ImageListView_DragOver"
+                     Drop="ImageListView_Drop">
 
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="local:ImageQueueItem">
@@ -127,15 +204,22 @@
                              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                              BorderThickness="1">
 
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <Grid.Shadow>
+                                <ThemeShadow/>
+                            </Grid.Shadow>
+
+                            <!-- Main Content Row -->
+                            <Grid Grid.Row="0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="80"/> <!-- Thumbnail -->
                                 <ColumnDefinition Width="*"/> <!-- Info -->
                                 <ColumnDefinition Width="Auto"/> <!-- Status -->
                             </Grid.ColumnDefinitions>
-
-                            <Grid.Shadow>
-                                <ThemeShadow/>
-                            </Grid.Shadow>
 
                             <!-- Thumbnail -->
                             <Border Grid.Column="0"
@@ -205,6 +289,20 @@
                                               Foreground="White"/>
                                 </StackPanel>
                             </Border>
+                            </Grid>
+
+                            <!-- Error State UI -->
+                            <StackPanel x:Name="ErrorPanel" Grid.Row="1" Visibility="{x:Bind HasError, Mode=OneWay}"
+                                       Background="#33FF0000" Padding="8" Margin="0,4,0,0" CornerRadius="4">
+                                <TextBlock Text="{x:Bind ErrorMessage, Mode=OneWay}"
+                                          Foreground="IndianRed" FontSize="11" TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                    <Button Content="Retry" FontSize="11" Padding="8,4"
+                                           Click="RetryImage_Click" Tag="{x:Bind}"/>
+                                    <Button Content="Remove" FontSize="11" Padding="8,4"
+                                           Click="RemoveImage_Click" Tag="{x:Bind}"/>
+                                </StackPanel>
+                            </StackPanel>
                         </Grid>
                     </DataTemplate>
                 </ListView.ItemTemplate>
@@ -229,7 +327,7 @@
             </ListView>
 
             <!-- Status Bar at Bottom -->
-            <Border Grid.Row="2"
+            <Border Grid.Row="3"
                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                    BorderThickness="0,1,0,0"
@@ -352,6 +450,31 @@
                                              HorizontalContentAlignment="Stretch"
                                              Margin="0,0,0,8"
                                              Tapped="Prediction_Tapped">
+
+                                        <Expander.ContextFlyout>
+                                            <MenuFlyout>
+                                                <MenuFlyoutItem Text="Copy Coordinates (Decimal)" Click="CopyDecimal_Click" Tag="{x:Bind}">
+                                                    <MenuFlyoutItem.Icon>
+                                                        <FontIcon Glyph="&#xE8C8;"/>
+                                                    </MenuFlyoutItem.Icon>
+                                                </MenuFlyoutItem>
+                                                <MenuFlyoutItem Text="Copy Coordinates (DMS)" Click="CopyDMS_Click" Tag="{x:Bind}">
+                                                    <MenuFlyoutItem.Icon>
+                                                        <FontIcon Glyph="&#xE8C8;"/>
+                                                    </MenuFlyoutItem.Icon>
+                                                </MenuFlyoutItem>
+                                                <MenuFlyoutItem Text="Copy Google Maps Link" Click="CopyGoogleMaps_Click" Tag="{x:Bind}">
+                                                    <MenuFlyoutItem.Icon>
+                                                        <FontIcon Glyph="&#xE707;"/>
+                                                    </MenuFlyoutItem.Icon>
+                                                </MenuFlyoutItem>
+                                                <MenuFlyoutItem Text="Copy Geo URI" Click="CopyGeoUri_Click" Tag="{x:Bind}">
+                                                    <MenuFlyoutItem.Icon>
+                                                        <FontIcon Glyph="&#xE71B;"/>
+                                                    </MenuFlyoutItem.Icon>
+                                                </MenuFlyoutItem>
+                                            </MenuFlyout>
+                                        </Expander.ContextFlyout>
 
                                         <Expander.Header>
                                             <Grid>
@@ -501,7 +624,38 @@
                 </Grid>
 
                 <!-- Settings Frame -->
-                <Frame x:Name="SettingsFrame" Visibility="Collapsed"/>
+                <Frame x:Name="SettingsFrame" Grid.Row="0" Visibility="Collapsed"/>
+
+                <!-- Status Bar -->
+                <Grid x:Name="StatusBar" Grid.Row="1"
+                      Background="{ThemeResource SystemControlBackgroundChromeMediumBrush}"
+                      Height="32"
+                      Padding="16,4"
+                      BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                      BorderThickness="0,1,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Network Status -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <FontIcon x:Name="NetworkStatusIcon" Glyph="&#xE774;" FontSize="14"/>
+                        <TextBlock x:Name="NetworkStatusText" Text="Online" FontSize="12" VerticalAlignment="Center"/>
+                    </StackPanel>
+
+                    <!-- Processing Status (Center) -->
+                    <TextBlock Grid.Column="1"
+                              x:Name="ProcessingStatusText"
+                              FontSize="12"
+                              VerticalAlignment="Center"
+                              Margin="16,0"
+                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+
+                    <!-- Right Spacer -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center"/>
+                </Grid>
             </Grid>
         </NavigationView.Content>
     </NavigationView>

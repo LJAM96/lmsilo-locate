@@ -64,6 +64,12 @@
                             <ComboBoxItem Content="90 days"/>
                             <ComboBoxItem Content="Never"/>
                         </ComboBox>
+                        <TextBlock x:Name="CacheValidationMessage"
+                                  Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                  FontSize="11"
+                                  Visibility="Collapsed"
+                                  TextWrapping="Wrap"
+                                  Text="Please select a valid cache expiration period."/>
                     </StackPanel>
 
                     <!-- Cache Info -->
@@ -88,13 +94,16 @@
                                    Style="{StaticResource AccentButtonStyle}">
                                 <Button.Flyout>
                                     <Flyout>
-                                        <StackPanel Spacing="8" Width="250">
+                                        <StackPanel Spacing="8" Width="300">
                                             <TextBlock Text="Cache Statistics" Style="{StaticResource SubtitleTextBlockStyle}"/>
                                             <TextBlock x:Name="StatTotalEntriesText" Text="Total Entries: 0" FontSize="12"/>
                                             <TextBlock x:Name="StatCacheHitsText" Text="Cache Hits: 0" FontSize="12"/>
                                             <TextBlock x:Name="StatCacheMissesText" Text="Cache Misses: 0" FontSize="12"/>
                                             <TextBlock x:Name="StatHitRateText" Text="Hit Rate: 0%" FontSize="12"/>
                                             <TextBlock x:Name="StatTotalSizeText" Text="Total Size: 0 MB" FontSize="12"/>
+                                            <TextBlock x:Name="StatAverageSizeText" Text="Average Entry Size: 0 KB" FontSize="12"/>
+                                            <TextBlock x:Name="StatOldestEntryText" Text="Oldest Entry: N/A" FontSize="12"/>
+                                            <TextBlock x:Name="StatNewestEntryText" Text="Newest Entry: N/A" FontSize="12"/>
                                         </StackPanel>
                                     </Flyout>
                                 </Button.Flyout>
@@ -229,6 +238,14 @@
                                         Checked="AppTheme_Changed"/>
                         </StackPanel>
                     </StackPanel>
+
+                    <!-- Skeleton Loaders -->
+                    <ToggleSwitch x:Name="ShowSkeletonLoadersToggle"
+                                 Header="Show Skeleton Loaders"
+                                 IsOn="True"
+                                 OnContent="Animated placeholders during loading"
+                                 OffContent="No loading placeholders"
+                                 Toggled="OnSettingChanged"/>
                 </StackPanel>
             </Expander>
 
@@ -287,6 +304,50 @@
                         <Button Content="Re-detect Hardware"
                                Style="{StaticResource AccentButtonStyle}"/>
                         <Button Content="View Model Info"/>
+                    </StackPanel>
+                </StackPanel>
+            </Expander>
+
+            <!-- Export Settings -->
+            <Expander Header="Export Settings"
+                     IsExpanded="False"
+                     HorizontalAlignment="Stretch"
+                     HorizontalContentAlignment="Stretch">
+                <Expander.HeaderTemplate>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <FontIcon Glyph="&#xE74E;" FontSize="16"/>
+                            <TextBlock Text="Export Settings" Style="{StaticResource SubtitleTextBlockStyle}"/>
+                        </StackPanel>
+                    </DataTemplate>
+                </Expander.HeaderTemplate>
+
+                <StackPanel Spacing="16" Margin="44,16,0,0">
+                    <!-- Always Show Export Preview -->
+                    <ToggleSwitch x:Name="AlwaysShowExportPreviewToggle"
+                                 Header="Always Show Export Preview"
+                                 IsOn="True"
+                                 OnContent="Preview shown before every export"
+                                 OffContent="Export directly without preview"
+                                 Toggled="OnSettingChanged"/>
+
+                    <!-- Default Export Template -->
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Default Export Template"
+                                  Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                        <ComboBox x:Name="DefaultExportTemplateCombo"
+                                 SelectedIndex="0"
+                                 HorizontalAlignment="Stretch"
+                                 MinWidth="200"
+                                 SelectionChanged="OnSettingChanged">
+                            <ComboBoxItem Content="Detailed" Tag="builtin-detailed"/>
+                            <ComboBoxItem Content="Simple" Tag="builtin-simple"/>
+                            <ComboBoxItem Content="Coordinates Only" Tag="builtin-coordinates"/>
+                        </ComboBox>
+                        <TextBlock Text="This template will be pre-selected when exporting results."
+                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                  FontSize="11"
+                                  TextWrapping="Wrap"/>
                     </StackPanel>
                 </StackPanel>
             </Expander>
