@@ -378,6 +378,13 @@ namespace GeoLens.Services
                                 column.Spacing(20);
                                 column.Item().AlignCenter().Text("GeoLens Batch Export Report")
                                     .FontSize(24).Bold().FontColor("#4FC3F7");
+
+                                // Intelligence Only Warning
+                                column.Item().Background("#FFA500").Padding(10).AlignCenter().Text("INTELLIGENCE ONLY")
+                                    .FontSize(14).Bold().FontColor("#000000");
+                                column.Item().AlignCenter().Text("This information is for intelligence purposes only and should not be used as evidence in legal proceedings.")
+                                    .FontSize(10).FontColor("#B0B0B0");
+
                                 column.Item().AlignCenter().Text($"Generated: {DateTime.Now:yyyy-MM-dd HH:mm:ss}")
                                     .FontSize(12).FontColor("#B0B0B0");
                                 column.Item().AlignCenter().Text($"Total Images: {results.Count()}")
@@ -438,47 +445,99 @@ namespace GeoLens.Services
 
         private void ComposeContent(IContainer container, EnhancedPredictionResult result, byte[]? thumbnailBytes, byte[]? mapImageBytes = null)
         {
-            container.PaddingTop(10).Column(column =>
+            container.PaddingTop(5).Column(mainColumn =>
             {
-                column.Spacing(15);
+                mainColumn.Spacing(8);
 
-                // Thumbnail (if available)
-                if (thumbnailBytes != null && thumbnailBytes.Length > 0)
-                {
-                    column.Item().AlignCenter().MaxWidth(300).Image(thumbnailBytes);
-                }
+                // Intelligence Only Warning
+                mainColumn.Item().Background("#FFA500").Padding(6).AlignCenter().Text("INTELLIGENCE ONLY")
+                    .FontSize(10).Bold().FontColor("#000000");
+                mainColumn.Item().AlignCenter().Text("This information is for intelligence purposes only and should not be used as evidence in legal proceedings.")
+                    .FontSize(7).FontColor("#B0B0B0");
 
-                // Map visualization (if available)
-                if (mapImageBytes != null && mapImageBytes.Length > 0)
+                // Top Row: Thumbnail and Map side by side
+                mainColumn.Item().Row(topRow =>
                 {
-                    column.Item().Column(mapSection =>
+                    // Thumbnail (left side)
+                    if (thumbnailBytes != null && thumbnailBytes.Length > 0)
                     {
-                        mapSection.Spacing(5);
-                        mapSection.Item().Text("Location Map").FontSize(14).Bold().FontColor("#4FC3F7");
-                        mapSection.Item().AlignCenter().MaxWidth(450).Border(2).BorderColor("#4FC3F7").Image(mapImageBytes);
+                        topRow.RelativeItem(1).Padding(4).Image(thumbnailBytes);
+                    }
+
+                    // Map (right side)
+                    if (mapImageBytes != null && mapImageBytes.Length > 0)
+                    {
+                        topRow.RelativeItem(1).Padding(4).Border(1).BorderColor("#4FC3F7").Image(mapImageBytes);
+                    }
+                });
+
+                // EXIF GPS Data and AI Predictions side by side
+                mainColumn.Item().Row(dataRow =>
+                {
+                    dataRow.Spacing(8);
+
+                    // Left column: EXIF GPS Data
+                    dataRow.RelativeItem(1).Column(leftCol =>
+                    {
+                        if (result.HasExifGps && result.ExifGps != null)
+                        {
+                            leftCol.Item().Element(c => ComposeCompactExifSection(c, result.ExifGps));
+                        }
                     });
-                }
 
-                // Reliability message
-                column.Item().Background("#2D2D2D").Padding(10).Text(result.ReliabilityMessage)
-                    .FontSize(11).Bold().FontColor("#81C784");
+                    // Right column: AI Predictions
+                    dataRow.RelativeItem(1).Column(rightCol =>
+                    {
+                        if (result.AiPredictions.Any())
+                        {
+                            rightCol.Item().Element(c => ComposeCompactPredictionsSection(c, result.AiPredictions));
+                        }
+                    });
+                });
+            });
+        }
 
-                // EXIF GPS Data
-                if (result.HasExifGps && result.ExifGps != null)
+        private void ComposeCompactExifSection(IContainer container, ExifGpsData exif)
+        {
+            container.Column(column =>
+            {
+                column.Spacing(3);
+                column.Item().Text("EXIF GPS Data").FontSize(11).Bold().FontColor("#00E5FF");
+                column.Item().Background("#2D2D2D").Padding(6).Column(inner =>
                 {
-                    column.Item().Element(c => ComposeExifSection(c, result.ExifGps));
-                }
+                    inner.Spacing(2);
+                    inner.Item().Text($"{exif.Coordinates}").FontSize(8).FontColor("#E0E0E0");
+                    if (!string.IsNullOrEmpty(exif.LocationName))
+                        inner.Item().Text(exif.LocationName).FontSize(8).FontColor("#E0E0E0");
+                    if (exif.Altitude.HasValue)
+                        inner.Item().Text($"Alt: {exif.Altitude:F0}m").FontSize(7).FontColor("#B0B0B0");
+                });
+            });
+        }
 
-                // AI Predictions
-                if (result.AiPredictions.Any())
-                {
-                    column.Item().Element(c => ComposePredictionsSection(c, result.AiPredictions));
-                }
+        private void ComposeCompactPredictionsSection(IContainer container, List<EnhancedLocationPrediction> predictions)
+        {
+            container.Column(column =>
+            {
+                column.Spacing(3);
+                column.Item().Text("Predictions (Top 5)").FontSize(11).Bold().FontColor("#76FF03");
 
-                // Cluster Info
-                if (result.ClusterInfo != null && result.ClusterInfo.IsClustered)
+                // Take top 5 predictions
+                foreach (var pred in predictions.Take(5))
                 {
-                    column.Item().Element(c => ComposeClusterSection(c, result.ClusterInfo));
+                    column.Item().Background("#2D2D2D").Padding(4).Column(inner =>
+                    {
+                        inner.Spacing(1);
+                        inner.Item().Row(row =>
+                        {
+                            row.RelativeItem().Text($"#{pred.Rank}: {pred.LocationSummary}")
+                                .FontSize(8).Bold().FontColor(GetConfidenceColor(pred.ConfidenceLevel));
+                            row.AutoItem().Text($"{pred.ProbabilityFormatted}")
+                                .FontSize(7).Bold().FontColor("#FFFFFF");
+                        });
+                        inner.Item().Text($"{pred.Coordinates}")
+                            .FontSize(7).FontColor("#B0B0B0");
+                    });
                 }
             });
         }

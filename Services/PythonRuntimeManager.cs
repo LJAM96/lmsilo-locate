@@ -71,6 +71,15 @@ namespace GeoLens.Services
 
             progress?.Report(0);
 
+            // Check if service is already running on the port (external process)
+            Debug.WriteLine($"Checking if service is already running on {BaseUrl}...");
+            if (await IsServiceAlreadyRunningAsync())
+            {
+                Debug.WriteLine("Service is already running externally - skipping startup");
+                progress?.Report(100);
+                return true;
+            }
+
             // Verify Python executable exists
             if (!CanFindPython())
             {
@@ -229,6 +238,28 @@ namespace GeoLens.Services
                 _pythonProcess?.Dispose();
                 _pythonProcess = null;
             }
+        }
+
+        /// <summary>
+        /// Check if the service is already running on the port (external process)
+        /// </summary>
+        private async Task<bool> IsServiceAlreadyRunningAsync()
+        {
+            try
+            {
+                var response = await _healthCheckClient.GetAsync($"{BaseUrl}/health");
+                if (response.IsSuccessStatusCode)
+                {
+                    var content = await response.Content.ReadAsStringAsync();
+                    Debug.WriteLine($"External service health check response: {content}");
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Health check failed (service not running): {ex.Message}");
+            }
+            return false;
         }
 
         private bool CanFindPython()

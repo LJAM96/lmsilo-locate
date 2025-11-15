@@ -17,18 +17,15 @@ namespace GeoLens.Services
         private readonly PredictionCacheService _cacheService;
         private readonly ExifMetadataExtractor _exifExtractor;
         private readonly GeoCLIPApiClient _apiClient;
-        private readonly GeographicClusterAnalyzer _clusterAnalyzer;
 
         public PredictionProcessor(
             PredictionCacheService cacheService,
             ExifMetadataExtractor exifExtractor,
-            GeoCLIPApiClient apiClient,
-            GeographicClusterAnalyzer clusterAnalyzer)
+            GeoCLIPApiClient apiClient)
         {
             _cacheService = cacheService ?? throw new ArgumentNullException(nameof(cacheService));
             _exifExtractor = exifExtractor ?? throw new ArgumentNullException(nameof(exifExtractor));
             _apiClient = apiClient ?? throw new ArgumentNullException(nameof(apiClient));
-            _clusterAnalyzer = clusterAnalyzer ?? throw new ArgumentNullException(nameof(clusterAnalyzer));
         }
 
         /// <summary>
@@ -95,15 +92,7 @@ namespace GeoLens.Services
                 var enhancedPredictions = ConvertToEnhancedPredictions(apiResult.Predictions);
                 Debug.WriteLine($"[PredictionProcessor] Converted {enhancedPredictions.Count} predictions");
 
-                // Step 5: Run clustering analysis
-                ClusterAnalysisResult? clusterInfo = null;
-                if (enhancedPredictions.Count >= 2)
-                {
-                    clusterInfo = _clusterAnalyzer.AnalyzeClusters(enhancedPredictions);
-                    Debug.WriteLine($"[PredictionProcessor] Clustering: IsClustered={clusterInfo.IsClustered}, Radius={clusterInfo.ClusterRadius:F1}km");
-                }
-
-                // Step 6: Store in cache for future lookups
+                // Step 5: Store in cache for future lookups
                 try
                 {
                     await _cacheService.StorePredictionAsync(imagePath, apiResult.Predictions, exifGps);
@@ -115,13 +104,13 @@ namespace GeoLens.Services
                     // Cache storage failure should not prevent returning the result
                 }
 
-                // Step 7: Build and return final result
+                // Step 6: Build and return final result
                 var result = new EnhancedPredictionResult
                 {
                     ImagePath = imagePath,
                     AiPredictions = enhancedPredictions,
                     ExifGps = exifGps,
-                    ClusterInfo = clusterInfo,
+                    ClusterInfo = null,
                     FromCache = false,
                     ProcessedAt = DateTime.UtcNow
                 };
@@ -217,28 +206,20 @@ namespace GeoLens.Services
         /// <summary>
         /// Build result from cached entry
         /// </summary>
-        private async Task<EnhancedPredictionResult> BuildResultFromCacheAsync(CachedPredictionEntry cached)
+        private Task<EnhancedPredictionResult> BuildResultFromCacheAsync(CachedPredictionEntry cached)
         {
             // Convert cached predictions to enhanced predictions
             var enhancedPredictions = ConvertToEnhancedPredictions(cached.Predictions);
 
-            // Run clustering analysis
-            ClusterAnalysisResult? clusterInfo = null;
-            if (enhancedPredictions.Count >= 2)
-            {
-                clusterInfo = _clusterAnalyzer.AnalyzeClusters(enhancedPredictions);
-                Debug.WriteLine($"[PredictionProcessor] Cached clustering: IsClustered={clusterInfo.IsClustered}");
-            }
-
-            return new EnhancedPredictionResult
+            return Task.FromResult(new EnhancedPredictionResult
             {
                 ImagePath = cached.FilePath,
                 AiPredictions = enhancedPredictions,
                 ExifGps = cached.ExifGps,
-                ClusterInfo = clusterInfo,
+                ClusterInfo = null,
                 FromCache = true,
                 ProcessedAt = cached.CachedAt
-            };
+            });
         }
 
         /// <summary>

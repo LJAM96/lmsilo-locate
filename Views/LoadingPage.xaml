@@ -40,6 +40,22 @@
                 HorizontalAlignment="Center"
                 Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
 
+            <!-- Intelligence Only Warning -->
+            <Border
+                Background="{ThemeResource SystemFillColorCautionBackgroundBrush}"
+                BorderBrush="{ThemeResource SystemFillColorCautionBrush}"
+                BorderThickness="1"
+                CornerRadius="4"
+                Padding="12,8"
+                MaxWidth="350">
+                <TextBlock
+                    Text="INTELLIGENCE ONLY"
+                    FontSize="12"
+                    FontWeight="SemiBold"
+                    HorizontalAlignment="Center"
+                    Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
+            </Border>
+
             <!-- Status Message -->
             <TextBlock
                 x:Name="StatusText"
