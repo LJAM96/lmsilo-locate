@@ -23,6 +23,7 @@ namespace GeoLens
         public static HardwareInfo? DetectedHardware { get; private set; }
         public static UserSettingsService SettingsService { get; private set; } = null!;
         public static PredictionCacheService CacheService { get; private set; } = null!;
+        public static AuditLogService AuditService { get; private set; } = null!;
 
         public App()
         {
@@ -31,6 +32,7 @@ namespace GeoLens
             // Initialize services
             SettingsService = new UserSettingsService();
             CacheService = new PredictionCacheService();
+            AuditService = new AuditLogService();
 
             // Register for application exit to dispose services
             this.UnhandledException += App_UnhandledException;
@@ -54,6 +56,7 @@ namespace GeoLens
                 ApiClient?.Dispose();
                 PythonManager?.Dispose();
                 CacheService?.Dispose();
+                AuditService?.Dispose();
                 Debug.WriteLine("[App] Services disposed successfully");
             }
             catch (Exception ex)

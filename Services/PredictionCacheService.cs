@@ -106,7 +106,7 @@ namespace GeoLens.Services
         /// <summary>
         /// Compute XXHash64 fingerprint of an image file
         /// </summary>
-        private async Task<string> ComputeImageHashAsync(string imagePath)
+        public async Task<string> ComputeImageHashAsync(string imagePath)
         {
             try
             {

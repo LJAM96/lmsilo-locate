@@ -23,6 +23,7 @@ namespace GeoLens.Views
             _isLoading = true;
             await LoadSettingsAsync();
             await UpdateCacheStatisticsAsync();
+            await UpdateAuditStatisticsAsync();
             UpdateHardwareInfo();
             _isLoading = false;
         }
@@ -329,6 +330,163 @@ namespace GeoLens.Views
             };
 
             await dialog.ShowAsync();
+        }
+
+        /// <summary>
+        /// Update audit log statistics display
+        /// </summary>
+        private async Task UpdateAuditStatisticsAsync()
+        {
+            try
+            {
+                var totalCount = await App.AuditService.GetTotalCountAsync();
+                var oldestEntry = await App.AuditService.GetOldestEntryDateAsync();
+
+                AuditCountText.Text = totalCount.ToString();
+                AuditOldestEntryText.Text = oldestEntry?.ToLocalTime().ToString("g") ?? "N/A";
+                AuditCurrentUserText.Text = Environment.UserName;
+
+                Debug.WriteLine($"[SettingsPage] Audit statistics updated: {totalCount} entries");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[SettingsPage] Error updating audit statistics: {ex.Message}");
+                AuditCountText.Text = "Error";
+                AuditOldestEntryText.Text = "Error";
+            }
+        }
+
+        /// <summary>
+        /// Export audit log as CSV
+        /// </summary>
+        private async void ExportAuditCsv_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var savePicker = new Windows.Storage.Pickers.FileSavePicker();
+                var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
+                WinRT.Interop.InitializeWithWindow.Initialize(savePicker, hwnd);
+
+                savePicker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary;
+                savePicker.FileTypeChoices.Add("CSV File", new[] { ".csv" });
+                savePicker.SuggestedFileName = $"GeoLens_Audit_{DateTime.Now:yyyyMMdd_HHmmss}";
+
+                var file = await savePicker.PickSaveFileAsync();
+                if (file != null)
+                {
+                    await App.AuditService.ExportToCsvAsync(file.Path);
+                    await ShowInfoDialog("Export Successful", $"Audit log exported to:\n{file.Path}");
+                    Debug.WriteLine($"[SettingsPage] Audit log exported to CSV: {file.Path}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[SettingsPage] Error exporting audit log to CSV: {ex.Message}");
+                await ShowErrorDialog("Export Failed", $"Failed to export audit log:\n{ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Export audit log as JSON
+        /// </summary>
+        private async void ExportAuditJson_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var savePicker = new Windows.Storage.Pickers.FileSavePicker();
+                var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
+                WinRT.Interop.InitializeWithWindow.Initialize(savePicker, hwnd);
+
+                savePicker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary;
+                savePicker.FileTypeChoices.Add("JSON File", new[] { ".json" });
+                savePicker.SuggestedFileName = $"GeoLens_Audit_{DateTime.Now:yyyyMMdd_HHmmss}";
+
+                var file = await savePicker.PickSaveFileAsync();
+                if (file != null)
+                {
+                    await App.AuditService.ExportToJsonAsync(file.Path);
+                    await ShowInfoDialog("Export Successful", $"Audit log exported to:\n{file.Path}");
+                    Debug.WriteLine($"[SettingsPage] Audit log exported to JSON: {file.Path}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[SettingsPage] Error exporting audit log to JSON: {ex.Message}");
+                await ShowErrorDialog("Export Failed", $"Failed to export audit log:\n{ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Export audit log as PDF
+        /// </summary>
+        private async void ExportAuditPdf_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var savePicker = new Windows.Storage.Pickers.FileSavePicker();
+                var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
+                WinRT.Interop.InitializeWithWindow.Initialize(savePicker, hwnd);
+
+                savePicker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary;
+                savePicker.FileTypeChoices.Add("PDF File", new[] { ".pdf" });
+                savePicker.SuggestedFileName = $"GeoLens_Audit_{DateTime.Now:yyyyMMdd_HHmmss}";
+
+                var file = await savePicker.PickSaveFileAsync();
+                if (file != null)
+                {
+                    await App.AuditService.ExportToPdfAsync(file.Path);
+                    await ShowInfoDialog("Export Successful", $"Audit log exported to:\n{file.Path}");
+                    Debug.WriteLine($"[SettingsPage] Audit log exported to PDF: {file.Path}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[SettingsPage] Error exporting audit log to PDF: {ex.Message}");
+                await ShowErrorDialog("Export Failed", $"Failed to export audit log:\n{ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Clear all audit log entries
+        /// </summary>
+        private async void ClearAuditLog_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // Show confirmation dialog with warning
+                var dialog = new ContentDialog
+                {
+                    Title = "Clear Audit Log",
+                    Content = "⚠️ WARNING ⚠️\n\n" +
+                             "This will permanently delete ALL audit log entries.\n\n" +
+                             "This action cannot be undone and may violate compliance requirements.\n\n" +
+                             "Are you sure you want to proceed?",
+                    PrimaryButtonText = "Delete All Entries",
+                    CloseButtonText = "Cancel",
+                    DefaultButton = ContentDialogButton.Close,
+                    XamlRoot = this.XamlRoot
+                };
+
+                var result = await dialog.ShowAsync();
+
+                if (result == ContentDialogResult.Primary)
+                {
+                    // Clear the audit log
+                    await App.AuditService.ClearAllEntriesAsync();
+
+                    // Update statistics display
+                    await UpdateAuditStatisticsAsync();
+
+                    Debug.WriteLine("[SettingsPage] Audit log cleared successfully");
+
+                    await ShowInfoDialog("Success", "Audit log cleared successfully.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[SettingsPage] Error clearing audit log: {ex.Message}");
+                await ShowErrorDialog("Error", $"Failed to clear audit log:\n{ex.Message}");
+            }
         }
     }
 }
