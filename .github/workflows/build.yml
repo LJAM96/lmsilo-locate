@@ -33,7 +33,7 @@ jobs:
       run: dotnet restore GeoLens.sln
 
     - name: Build solution
-      run: dotnet build GeoLens.sln --configuration Release --no-restore
+      run: dotnet build GeoLens.sln --configuration Release --no-restore --verbosity detailed
 
     - name: Run unit tests
       run: dotnet test GeoLens.Tests/GeoLens.Tests.csproj --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage"

@@ -6,6 +6,8 @@
     <OutputType>WinExe</OutputType>
     <!-- Use in-process XAML compiler instead of executable -->
     <UseXamlCompilerExecutable>false</UseXamlCompilerExecutable>
+    <!-- Disable XAML Hot Reload which can cause compilation issues -->
+    <XamlHotReloadEnabled>false</XamlHotReloadEnabled>
     <!-- WinUI 3 -->
     <UseWinUI>true</UseWinUI>
     <EnableMsixTooling>true</EnableMsixTooling>
@@ -71,7 +73,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.251106002" />
-    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.*" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.1742" />
     <PackageReference Include="System.Security.Permissions" Version="6.0.0" PrivateAssets="all" />
     <PackageReference Include="System.IO.Hashing" Version="9.0.0" />
     <!-- Phase 2: Services Infrastructure -->
