@@ -4,8 +4,6 @@
     <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <OutputType>WinExe</OutputType>
-    <!-- Use in-process XAML compiler instead of executable -->
-    <UseXamlCompilerExecutable>false</UseXamlCompilerExecutable>
     <!-- Disable XAML Hot Reload which can cause compilation issues -->
     <XamlHotReloadEnabled>false</XamlHotReloadEnabled>
     <!-- WinUI 3 -->
