@@ -28,6 +28,7 @@
     <DisableXbfLineInfo>false</DisableXbfLineInfo>
     <EnableXBindDiagnostics>true</EnableXBindDiagnostics>
     <XamlDebuggingInformation>true</XamlDebuggingInformation>
+    <XamlBuildLogVerbosity>Diagnostic</XamlBuildLogVerbosity>
     <!-- App Options -->
     <UseRidGraph>true</UseRidGraph>
     <Platforms>x86;x64;ARM64</Platforms>
