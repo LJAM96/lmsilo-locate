@@ -25,7 +25,7 @@ jobs:
         dotnet build GeoLens.sln --configuration Release
 
     - name: Publish release build
-      run: dotnet publish GeoLens.csproj --configuration Release --output ./release
+      run: dotnet publish GeoLens.csproj --configuration Release --runtime win-x64 --output ./release
 
     - name: Create release archive
       shell: pwsh
