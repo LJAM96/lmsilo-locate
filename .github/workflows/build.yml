@@ -33,7 +33,7 @@ jobs:
       run: dotnet restore GeoLens.sln
 
     - name: Build solution
-      run: dotnet build GeoLens.sln --configuration Release --no-restore
+      run: dotnet build GeoLens.sln --configuration Release --no-restore --verbosity detailed
 
     - name: Run unit tests
       run: dotnet test GeoLens.Tests/GeoLens.Tests.csproj --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage"
@@ -68,7 +68,7 @@ jobs:
       continue-on-error: true
 
     - name: Build artifacts
-      run: dotnet publish GeoLens.csproj --configuration Release --output ./publish
+      run: dotnet publish GeoLens.csproj --configuration Release --runtime win-x64 --output ./publish
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4

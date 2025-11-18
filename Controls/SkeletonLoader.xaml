@@ -22,9 +22,7 @@
 
     <Border x:Name="RootBorder"
             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-            CornerRadius="{x:Bind CornerRadius, Mode=OneWay}"
-            Width="{x:Bind Width, Mode=OneWay}"
-            Height="{x:Bind Height, Mode=OneWay}">
+            CornerRadius="{x:Bind CornerRadius, Mode=OneWay}">
 
         <!-- Shimmer Gradient Overlay -->
         <Border.OpacityMask>
