@@ -1,133 +1,104 @@
-# GeoLens
+# LMSilo Locate
 
-AI-powered image geolocation using GeoCLIP.
+AI-powered image geolocation service using GeoCLIP to predict where photos were taken.
+
+## Features
+
+- **GeoCLIP Model**: State-of-the-art image geolocation
+- **Top-K Predictions**: Multiple location candidates with confidence
+- **Batch Processing**: Process multiple images
+- **Shared Workspace**: All users see job queue
+- **Audit Logging**: Full usage tracking
 
 ## Architecture
 
 ```
-geolens/
-├── backend/          # Python FastAPI + GeoCLIP
-│   ├── api_web.py    # Web API with file upload
-│   ├── api_service.py # Original path-based API
-│   ├── ai_street.py  # CLI tool
-│   └── llocale/      # GeoCLIP predictor
-├── frontend/         # React + TypeScript + Tailwind
-│   ├── src/
-│   │   ├── components/
-│   │   ├── pages/
-│   │   ├── stores/   # Zustand state management
-│   │   └── api/      # API client
-│   └── electron/     # Electron main process
-├── docs/             # Documentation
-└── docker/           # Docker configuration
-```
-
-## Quick Start
-
-### Prerequisites
-- Python 3.10+
-- Node.js 18+
-- (Optional) NVIDIA GPU with CUDA for faster inference
-
-### Development
-
-**Backend:**
-```bash
-cd backend
-pip install -r requirements.txt
-pip install uvicorn python-multipart
-
-# Run API server
-uvicorn backend.api_web:app --reload --host 0.0.0.0 --port 8000
-```
-
-**Frontend:**
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Open http://localhost:5173
-
-### Docker Deployment
-
-```bash
-# Build and run both services
-docker-compose up --build
-
-# Or build individually
-docker build -t geolens-frontend -f Dockerfile.frontend .
-docker build -t geolens-backend -f Dockerfile.backend .
-```
-
-Frontend: http://localhost:8080  
-Backend API: http://localhost:8000
-
-### Electron Desktop App
-
-```bash
-cd frontend
-
-# Development mode
-npm run electron:dev
-
-# Build for Windows
-npm run electron:build:win
-
-# Build for macOS
-npm run electron:build:mac
-
-# Build for Linux
-npm run electron:build:linux
+locate/
+├── backend/
+│   ├── api_service.py    # FastAPI application
+│   ├── api/
+│   │   └── jobs.py       # Job management API
+│   ├── models/
+│   │   └── job.py        # Job SQLAlchemy model
+│   ├── services/
+│   │   └── database.py   # PostgreSQL connection
+│   ├── workers/
+│   │   ├── celery_app.py
+│   │   └── tasks.py      # GeoCLIP processing
+│   └── llocale/          # GeoCLIP predictor
+├── frontend/
+│   └── src/
+│       ├── App.tsx
+│       └── components/
+│           ├── JobList.tsx
+│           └── AuditLogViewer.tsx
+└── Dockerfile
 ```
 
 ## API Endpoints
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/health` | Health check |
-| POST | `/upload` | Upload images (returns paths) |
-| POST | `/infer` | Run geolocation inference |
+### Inference
+- `POST /infer` - Batch image geolocation
+- `GET /health` - Health check
 
-### Example: Upload and Infer
+### Jobs
+- `POST /api/jobs` - Create geolocation job
+- `GET /api/jobs` - List all jobs
+- `GET /api/jobs/{id}` - Get job results
+- `DELETE /api/jobs/{id}` - Delete job
 
-```bash
-# Upload images
-curl -X POST http://localhost:8000/upload \
-  -F "files=@photo1.jpg" \
-  -F "files=@photo2.jpg"
+### Audit
+- `GET /api/audit` - List audit logs
+- `GET /api/audit/export` - Export CSV/JSON
 
-# Run inference
-curl -X POST http://localhost:8000/infer \
-  -H "Content-Type: application/json" \
-  -d '{
-    "items": [{"path": "/tmp/geolens_uploads/abc123.jpg"}],
-    "top_k": 5,
-    "device": "auto"
-  }'
+## Inference Request
+
+```json
+{
+  "items": [
+    {"path": "/path/to/image.jpg", "md5": "optional"}
+  ],
+  "top_k": 5,
+  "device": "auto"
+}
 ```
 
-## Configuration
+## Response
 
-### Environment Variables
+```json
+{
+  "device": "cuda",
+  "results": [
+    {
+      "path": "/path/to/image.jpg",
+      "predictions": [
+        {
+          "rank": 1,
+          "latitude": 48.8584,
+          "longitude": 2.2945,
+          "probability": 0.85,
+          "country": "France",
+          "city": "Paris"
+        }
+      ]
+    }
+  ]
+}
+```
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `VITE_API_URL` | Backend API URL | `http://localhost:8000` |
-| `VITE_WS_URL` | WebSocket URL | `ws://localhost:8000/ws` |
-| `HF_HOME` | HuggingFace cache directory | `~/.cache/huggingface` |
+## Development
 
-## Design System
+```bash
+cd locate
 
-The frontend uses a "Cream & Olive" aesthetic:
+# Backend
+cd backend
+pip install -r requirements.txt
+uvicorn api_service:app --reload
 
-- **Cream** - Warm backgrounds (`#fefdfb`, `#fdf9f3`)
-- **Olive** - Brand color, buttons (`#6d7a4e`, `#8a9766`)
-- **Surface** - Warm gray text (`#514d49`)
-- **Dark Mode** - Rich warm blacks (`#151413`)
-
-See [docs/frontend.md](docs/frontend.md) for full design system.
+# Worker
+celery -A workers.celery_app worker -l info
+```
 
 ## License
 
