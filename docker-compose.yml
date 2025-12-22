@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    networks:
+      - geolens
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount HuggingFace cache for model persistence
+      - hf-cache:/home/geolens/.cache/huggingface
+      # Mount uploads directory
+      - uploads:/tmp/geolens_uploads
+    environment:
+      - HF_HOME=/home/geolens/.cache/huggingface
+      - TRANSFORMERS_OFFLINE=0
+    networks:
+      - geolens
+    restart: unless-stopped
+    # GPU support (uncomment for NVIDIA)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+networks:
+  geolens:
+    driver: bridge
+
+volumes:
+  hf-cache:
+  uploads:

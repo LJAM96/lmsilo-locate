@@ -1,0 +1,12 @@
+
+> geolens@5.0.0 build
+> tsc -b && vite build
+
+src/api/client.ts(1,17): error TS1484: 'AxiosInstance' is a type and must be imported using a type-only import when 'verbatimModuleSyntax' is enabled.
+src/api/client.ts(56,42): error TS6133: 'index' is declared but its value is never read.
+src/components/Layout.tsx(2,51): error TS6133: 'X' is declared but its value is never read.
+src/components/PredictionResults.tsx(1,18): error TS6133: 'Percent' is declared but its value is never read.
+src/pages/HomePage.tsx(2,48): error TS6133: 'CheckCircle' is declared but its value is never read.
+src/pages/HomePage.tsx(27,11): error TS6133: 'hasImages' is declared but its value is never read.
+src/pages/HomePage.tsx(66,44): error TS2551: Property 'location_summary' does not exist on type 'Prediction'. Did you mean 'locationSummary'?
+src/stores/imageStore.ts(2,1): error TS6133: 'persist' is declared but its value is never read.
