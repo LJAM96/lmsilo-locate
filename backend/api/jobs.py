@@ -45,7 +45,12 @@ async def create_job(
     
     # Read file content for hash
     content = await file.read()
-    file_hash = hashlib.sha256(content).hexdigest()
+    try:
+        import xxhash
+        file_hash = xxhash.xxh3_64(content).hexdigest()
+    except ImportError:
+        import hashlib
+        file_hash = hashlib.sha256(content).hexdigest()
     await file.seek(0)
     ext = os.path.splitext(file.filename or "image.jpg")[1]
     unique_filename = f"{file_hash[:16]}{ext}"
