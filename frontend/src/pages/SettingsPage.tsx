@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Save, RotateCcw, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { useSettingsStore } from '../stores/settingsStore';
+import { useTheme } from '../lib/theme';
 import { apiClient } from '../api/client';
 
 export function SettingsPage() {
     const settings = useSettingsStore();
+    const { isDark, toggle } = useTheme();
     const [localApiUrl, setLocalApiUrl] = useState(settings.apiUrl);
     const [localTopK, setLocalTopK] = useState(settings.topK);
     const [healthStatus, setHealthStatus] = useState<'checking' | 'ok' | 'error'>('checking');
@@ -147,17 +149,17 @@ export function SettingsPage() {
                             </p>
                         </div>
                         <button
-                            onClick={settings.toggleDarkMode}
+                            onClick={toggle}
                             className={`
                 relative w-12 h-6 rounded-full transition-colors
-                ${settings.darkMode ? 'bg-olive-600' : 'bg-surface-300'}
+                ${isDark ? 'bg-olive-600' : 'bg-surface-300'}
               `}
                         >
                             <span
                                 className={`
                   absolute top-1 left-1 w-4 h-4 rounded-full bg-white
                   transition-transform
-                  ${settings.darkMode ? 'translate-x-6' : 'translate-x-0'}
+                  ${isDark ? 'translate-x-6' : 'translate-x-0'}
                 `}
                             />
                         </button>

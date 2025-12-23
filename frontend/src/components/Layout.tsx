@@ -1,17 +1,17 @@
 import React from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
 import { MapPin, Settings, Info, Moon, Sun } from 'lucide-react';
-import { useSettingsStore } from '../stores/settingsStore';
+import { useTheme } from '../lib/theme';
 
 export function Layout() {
-    const { darkMode, toggleDarkMode } = useSettingsStore();
+    const { isDark, toggle } = useTheme();
 
     return (
         <div className="min-h-screen transition-colors duration-300 flex flex-col">
             {/* Header */}
             <header
                 className="border-b border-cream-200 dark:border-dark-100 sticky top-0 z-[2000] transition-colors duration-300"
-                style={{ backgroundColor: darkMode ? '#201e1c' : '#ffffff' }}
+                style={{ backgroundColor: isDark ? '#201e1c' : '#ffffff' }}
             >
                 <div className="max-w-7xl mx-auto px-6 py-4">
                     <div className="flex items-center justify-between">
@@ -21,7 +21,7 @@ export function Layout() {
                                 <MapPin className="w-5 h-5 text-white" />
                             </div>
                             <h1 className="text-2xl font-serif text-surface-800 dark:text-cream-100">
-                                GeoLens
+                                Locate
                             </h1>
                         </NavLink>
 
@@ -33,12 +33,12 @@ export function Layout() {
 
                             {/* Theme Toggle */}
                             <button
-                                onClick={toggleDarkMode}
+                                onClick={toggle}
                                 className="ml-4 p-2 rounded-xl bg-cream-200 dark:bg-dark-100 hover:bg-cream-300 dark:hover:bg-dark-50 transition-colors"
-                                aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-                                title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+                                aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+                                title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
                             >
-                                {darkMode ? (
+                                {isDark ? (
                                     <Sun className="w-5 h-5 text-cream-400" />
                                 ) : (
                                     <Moon className="w-5 h-5 text-surface-600" />
@@ -57,7 +57,7 @@ export function Layout() {
             {/* Footer */}
             <footer className="border-t border-cream-200 dark:border-dark-100 mt-auto transition-colors">
                 <div className="max-w-7xl mx-auto px-6 py-6 text-center text-sm text-surface-500 dark:text-surface-400">
-                    <p>GeoLens • AI-Powered Image Geolocation</p>
+                    <p>Locate • AI-Powered Image Geolocation</p>
                 </div>
             </footer>
         </div>

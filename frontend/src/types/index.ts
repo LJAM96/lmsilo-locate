@@ -80,7 +80,6 @@ export interface BatchProgress {
 export interface AppSettings {
     apiUrl: string;
     wsUrl: string;
-    darkMode: boolean;
     topK: number;
     device: 'auto' | 'cpu' | 'cuda' | 'rocm';
 }
