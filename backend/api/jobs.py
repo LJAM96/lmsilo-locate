@@ -6,7 +6,7 @@ from uuid import UUID
 import hashlib
 import os
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Request
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,9 +15,19 @@ from models.job import Job, JobStatus
 
 router = APIRouter()
 
+# Initialize audit logger
+try:
+    import sys
+    sys.path.insert(0, "/app")
+    from shared.services.audit import AuditLogger
+    audit_logger = AuditLogger("locate")
+except ImportError:
+    audit_logger = None
+
 
 @router.post("", status_code=201)
 async def create_job(
+    request: Request,
     file: UploadFile = File(...),
     top_k: int = Form(default=5),
     session: AsyncSession = Depends(get_session),
@@ -33,18 +43,18 @@ async def create_job(
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image")
     
-    # Generate unique filename
-    file_hash = hashlib.sha256(await file.read()).hexdigest()[:16]
+    # Read file content for hash
+    content = await file.read()
+    file_hash = hashlib.sha256(content).hexdigest()
     await file.seek(0)
     ext = os.path.splitext(file.filename or "image.jpg")[1]
-    unique_filename = f"{file_hash}{ext}"
+    unique_filename = f"{file_hash[:16]}{ext}"
     
     # Save file
     upload_dir = settings.upload_dir
     upload_dir.mkdir(parents=True, exist_ok=True)
     file_path = upload_dir / unique_filename
     
-    content = await file.read()
     with open(file_path, "wb") as f:
         f.write(content)
     
@@ -60,6 +70,23 @@ async def create_job(
     session.add(job)
     await session.commit()
     await session.refresh(job)
+    
+    # Log audit event
+    if audit_logger:
+        try:
+            await audit_logger.log(
+                session=session,
+                action="job_created",
+                request=request,
+                job_id=job.id,
+                file_hash=file_hash,
+                file_name=file.filename,
+                file_size_bytes=len(content),
+                status="pending",
+                metadata={"top_k": top_k},
+            )
+        except Exception:
+            pass  # Don't fail job creation if audit fails
     
     # Queue for processing
     from workers.tasks import process_geolocation
