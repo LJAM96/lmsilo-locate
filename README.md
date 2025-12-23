@@ -94,7 +94,7 @@ cd locate
 # Backend
 cd backend
 pip install -r requirements.txt
-uvicorn api_service:app --reload
+uvicorn api_web:app --reload
 
 # Worker
 celery -A workers.celery_app worker -l info
