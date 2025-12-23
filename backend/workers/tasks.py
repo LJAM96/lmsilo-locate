@@ -19,17 +19,8 @@ logger = logging.getLogger(__name__)
 engine = create_async_engine(DATABASE_URL, echo=False)
 async_session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-# Predictor cache (one per worker process)
-_predictor = None
-
-
-def get_predictor():
-    """Get or create the GeoClip predictor."""
-    global _predictor
-    if _predictor is None:
-        logger.info(f"Loading GeoClip predictor with device: {DEVICE}")
-        _predictor = GeoClipPredictor(device=DEVICE)
-    return _predictor
+# Use model manager with idle timeout
+from services.model_manager import get_predictor
 
 
 @celery_app.task(bind=True, queue="locate")
