@@ -15,7 +15,7 @@ AI-powered image geolocation service using GeoCLIP to predict where photos were 
 ```
 locate/
 ├── backend/
-│   ├── api_service.py    # FastAPI application
+│   ├── main.py           # FastAPI application
 │   ├── api/
 │   │   └── jobs.py       # Job management API
 │   ├── models/
@@ -94,7 +94,7 @@ cd locate
 # Backend
 cd backend
 pip install -r requirements.txt
-uvicorn api_web:app --reload
+uvicorn main:app --reload
 
 # Worker
 celery -A workers.celery_app worker -l info

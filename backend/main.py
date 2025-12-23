@@ -1,6 +1,6 @@
 """
-Enhanced FastAPI service with file upload support and CORS for web frontend.
-Extends the base api_service with additional endpoints for the React frontend.
+GeoLens FastAPI service with file upload support and CORS for web frontend.
+Main entry point for the Locate backend API.
 """
 
 from __future__ import annotations
@@ -303,4 +303,4 @@ def cleanup():
         logger.error(f"Cleanup failed: {e}")
 
 
-# Run with: uvicorn backend.api_web:app --reload --host 0.0.0.0 --port 8000
+# Run with: uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
