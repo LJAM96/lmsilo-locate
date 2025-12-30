@@ -1,6 +1,86 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  /* Colors */
+  --color-cream-50: #fefdfb;
+  --color-cream-100: #fdf9f3;
+  --color-cream-200: #f9f1e4;
+  --color-cream-300: #f3e5d0;
+  --color-cream-400: #e8d4b5;
+  --color-cream-500: #d9c09a;
+  --color-cream-600: #c4a67a;
+  --color-cream-700: #a8885c;
+  --color-cream-800: #8a6d47;
+  --color-cream-900: #70563a;
+
+  --color-olive-50: #f7f8f5;
+  --color-olive-100: #eef0e8;
+  --color-olive-200: #dde1d1;
+  --color-olive-300: #c4cbad;
+  --color-olive-400: #a7b185;
+  --color-olive-500: #8a9766;
+  --color-olive-600: #6d7a4e;
+  --color-olive-700: #556040;
+  --color-olive-800: #464e36;
+  --color-olive-900: #3c4230;
+
+  --color-surface-50: #f8f8f7;
+  --color-surface-100: #f0efed;
+  --color-surface-200: #e0dedb;
+  --color-surface-300: #c9c5c0;
+  --color-surface-400: #a9a49d;
+  --color-surface-500: #918b83;
+  --color-surface-600: #7a746c;
+  --color-surface-700: #635e58;
+  --color-surface-800: #514d49;
+  --color-surface-900: #44413e;
+  --color-surface-950: #282624;
+
+  --color-dark-50: #3d3a37;
+  --color-dark-100: #343230;
+  --color-dark-200: #2d2b29;
+  --color-dark-300: #262422;
+  --color-dark-400: #201e1c;
+  --color-dark-500: #1a1917;
+  --color-dark-600: #151413;
+  --color-dark-700: #100f0e;
+  --color-dark-800: #0b0a0a;
+  --color-dark-900: #060606;
+
+  /* Fonts */
+  --font-serif: "Instrument Serif", Georgia, serif;
+  --font-sans: Inter, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  /* Border Radius */
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+  --radius-3xl: 2rem;
+
+  /* Shadows */
+  --shadow-soft: 0 2px 15px -3px rgba(0, 0, 0, 0.07), 0 10px 20px -2px rgba(0, 0, 0, 0.04);
+  --shadow-medium: 0 4px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 25px -5px rgba(0, 0, 0, 0.04);
+  --shadow-soft-dark: 0 2px 15px -3px rgba(0, 0, 0, 0.3), 0 10px 20px -2px rgba(0, 0, 0, 0.2);
+  --shadow-medium-dark: 0 4px 25px -5px rgba(0, 0, 0, 0.4), 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+
+  /* Animations */
+  --animate-fade-in: fadeIn 0.3s ease-out;
+  --animate-slide-up: slideUp 0.4s ease-out;
+  --animate-pulse-subtle: pulseSubtle 2s infinite;
+
+  @keyframes fadeIn {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+  }
+  @keyframes slideUp {
+    0% { opacity: 0; transform: translateY(10px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes pulseSubtle {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+  }
+}
 
 /* Oatmeal theme base styles with dark mode support */
 @layer base {
@@ -126,6 +206,42 @@
   .upload-zone.active {
     @apply border-olive-500 bg-olive-50;
   }
+}
+
+/* ==========================================
+   LEAFLET MAP DARK MODE
+   ========================================== */
+
+/* Zoom controls */
+html.dark .leaflet-bar a {
+  background-color: #262422 !important;
+  color: #f3e5d0 !important;
+  border-bottom-color: #3d3a37 !important;
+}
+
+html.dark .leaflet-bar a:hover {
+  background-color: #3d3a37 !important;
+  color: #fff !important;
+}
+
+html.dark .leaflet-bar a.leaflet-disabled {
+  background-color: #201e1c !important;
+  color: #514d49 !important;
+}
+
+/* Attribution control */
+html.dark .leaflet-control-attribution {
+  background-color: rgba(38, 36, 34, 0.8) !important;
+  color: #a9a49d !important;
+}
+
+html.dark .leaflet-control-attribution a {
+  color: #c4cbad !important;
+}
+
+/* Leaflet container background (before tiles load) */
+html.dark .leaflet-container {
+  background-color: #0b0a0a !important;
 }
 
 /* ==========================================

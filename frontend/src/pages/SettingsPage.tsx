@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Save, RotateCcw, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { useSettingsStore } from '../stores/settingsStore';
-import { useTheme } from '../lib/theme';
+import { useTheme } from '@lmsilo/shared-ui';
 import { apiClient } from '../api/client';
 
 export function SettingsPage() {
@@ -12,15 +12,15 @@ export function SettingsPage() {
     const [healthStatus, setHealthStatus] = useState<'checking' | 'ok' | 'error'>('checking');
     const [saved, setSaved] = useState(false);
 
-    useEffect(() => {
-        checkHealth();
-    }, []);
-
     const checkHealth = async () => {
         setHealthStatus('checking');
         const health = await apiClient.health();
         setHealthStatus(health.status);
     };
+
+    useEffect(() => {
+        checkHealth();
+    }, []);
 
     const handleSave = () => {
         settings.setApiUrl(localApiUrl);
@@ -141,6 +141,9 @@ export function SettingsPage() {
                         Appearance
                     </h2>
 
+
+
+                    {/* Dark Mode Toggle */}
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="font-medium text-surface-700 dark:text-cream-200">Dark mode</p>

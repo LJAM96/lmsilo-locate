@@ -7,11 +7,10 @@ export function Layout() {
     const { isDark, toggle } = useTheme();
 
     return (
-        <div className="min-h-screen transition-colors duration-300 flex flex-col">
+        <div className="min-h-screen bg-cream-100 dark:bg-dark-500 transition-colors duration-300 flex flex-col">
             {/* Header */}
             <header
-                className="border-b border-cream-200 dark:border-dark-100 sticky top-0 z-[2000] transition-colors duration-300"
-                style={{ backgroundColor: isDark ? '#201e1c' : '#ffffff' }}
+                className="border-b border-cream-200 dark:border-dark-100 dark:bg-dark-400 bg-white sticky top-0 z-[2000] transition-colors duration-300"
             >
                 <div className="max-w-7xl mx-auto px-6 py-4">
                     <div className="flex items-center justify-between">
@@ -27,6 +26,13 @@ export function Layout() {
 
                         {/* Navigation */}
                         <nav className="flex items-center gap-2">
+                            <a
+                                href="http://localhost:5173"
+                                className="flex items-center gap-2 px-4 py-2 rounded-xl font-medium transition-all duration-200 text-surface-600 dark:text-cream-400 hover:bg-cream-200 dark:hover:bg-dark-100 hover:text-surface-800 dark:hover:text-cream-200"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-home w-4 h-4"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                                <span>Home</span>
+                            </a>
                             <NavItem to="/" icon={MapPin}>Analyze</NavItem>
                             <NavItem to="/settings" icon={Settings}>Settings</NavItem>
                             <NavItem to="/about" icon={Info}>About</NavItem>

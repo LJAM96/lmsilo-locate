@@ -56,13 +56,15 @@ interface MapViewProps {
     className?: string;
 }
 
+import { useTheme } from '../lib/theme';
+
 export function MapView({ predictions, exifLocation, className = '' }: MapViewProps) {
     // Dark mode tile layer
     const tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
     const darkTileUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 
-    // Check if dark mode is active
-    const isDarkMode = document.documentElement.classList.contains('dark');
+    // Get reactive dark mode state
+    const { isDark } = useTheme();
 
     // Default center (world view)
     const defaultCenter: [number, number] = [20, 0];
@@ -102,10 +104,12 @@ export function MapView({ predictions, exifLocation, className = '' }: MapViewPr
                 zoom={defaultZoom}
                 className="w-full h-full min-h-[300px]"
                 scrollWheelZoom={true}
+                attributionControl={false}
             >
                 <TileLayer
+                    key={isDark ? 'dark' : 'light'}
                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-                    url={isDarkMode ? darkTileUrl : tileUrl}
+                    url={isDark ? darkTileUrl : tileUrl}
                 />
 
                 {predictions.length > 0 && <FitBounds predictions={predictions} />}

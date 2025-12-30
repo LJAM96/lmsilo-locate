@@ -1,27 +1,17 @@
-# Locate - Merged Docker Image
-# Contains: Frontend (nginx) + Backend (uvicorn) + Worker (celery)
-# Run mode determined by command override in docker-compose
+# Locate - Backend Only
+# API server + Celery worker for image geolocation
+# Frontend now served by Portal
 
-# Stage 1: Build Frontend
-FROM node:20-alpine AS frontend-builder
-
-WORKDIR /app/frontend
-
-COPY frontend/package*.json ./
-RUN npm ci
-
-COPY frontend/ .
-RUN npm run build
-
-# Stage 2: Python Backend
 FROM python:3.11-slim
 
 WORKDIR /app
 
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    nginx \
     supervisor \
     && rm -rf /var/lib/apt/lists/*
 
@@ -41,20 +31,37 @@ RUN pip install --no-cache-dir \
 # Copy backend code
 COPY backend/ ./backend/
 
-# Copy frontend build from builder stage
-COPY --from=frontend-builder /app/frontend/dist /usr/share/nginx/html
+# Create supervisord config
+RUN mkdir -p /etc/supervisor/conf.d /var/log/supervisor
+COPY <<EOF /etc/supervisor/conf.d/supervisord.conf
+[supervisord]
+nodaemon=true
+user=root
+logfile=/var/log/supervisor/supervisord.log
+pidfile=/var/run/supervisord.pid
 
-# Copy nginx config
-COPY docker/nginx.conf /etc/nginx/sites-available/default
+[program:uvicorn]
+command=python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
+directory=/app
+autostart=true
+autorestart=true
+stdout_logfile=/var/log/supervisor/uvicorn.log
+stderr_logfile=/var/log/supervisor/uvicorn_error.log
 
-# Copy supervisord config
-COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+[program:celery]
+command=python -m celery -A backend.workers.celery_app worker -Q locate -c 1 --loglevel=info
+directory=/app
+autostart=true
+autorestart=true
+stdout_logfile=/var/log/supervisor/celery.log
+stderr_logfile=/var/log/supervisor/celery_error.log
+EOF
 
 # Create directories
-RUN mkdir -p /app/uploads /app/huggingface /var/log/supervisor
+RUN mkdir -p /app/uploads /app/huggingface
 
-# Expose ports
-EXPOSE 80 8000
+# Expose API port only
+EXPOSE 8000
 
-# Default command runs supervisord (both nginx + uvicorn)
+# Run supervisord
 CMD ["supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
